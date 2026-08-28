@@ -258,3 +258,29 @@ como el móvil desde un solo lugar).
   (inspirado en academiavial.com), evaluar `framer-motion` — no se
   agregó en este bloque de trabajo, quedó fuera de alcance.
 - "Me gusta" en comentarios individuales de noticias.
+- **NUEVO (27/08/2026): Re-confirmar registro en Google Search Console
+  con el dominio nuevo.** En algún momento antes de esta sesión se había
+  empezado a registrar el sitio en Google (verificar propiedad en
+  Search Console + enviar un `sitemap.xml`), pero **con el dominio
+  viejo** (`muvo-rd.vercel.app` o `muvordvial.com` antes del cambio de
+  DNS) — nunca quedó confirmado ni documentado, y ahora que la URL de
+  producción es `www.muvordvial.com` hay que asumir que ese registro
+  quedó huérfano o inválido. No hay certeza de qué método de
+  verificación se usó (DNS/TXT vs. archivo/meta tag) ni si el sitemap
+  se generó desde código o se subió a mano — **antes de rehacer nada,
+  la próxima sesión debe auditar el estado real:**
+  1. Entrar a Google Search Console (search.google.com/search-console)
+     y revisar qué propiedades existen hoy — es probable que solo
+     aparezca `muvo-rd.vercel.app` o el dominio sin `www`.
+  2. Revisar el repo del frontend por un archivo `sitemap.xml`, una ruta
+     `app/sitemap.ts`/`sitemap.xml/route.ts` (convención de Next.js App
+     Router), o un `next-sitemap.config.js` — hoy no hay nada de esto
+     documentado en la estructura de carpetas de este archivo, así que
+     puede que el sitemap se haya generado/subido manualmente y no viva
+     en código.
+  3. Con eso claro, agregar `www.muvordvial.com` como propiedad nueva en
+     Search Console (verificación recomendada por DNS ya que el dominio
+     vive en Vercel — mismo patrón que se usó para verificar el dominio
+     en Resend), generar/confirmar el sitemap real, enviarlo, y pedir
+     indexación de las páginas públicas principales (home, `/empresas`,
+     `/inscripcion`, etc.).

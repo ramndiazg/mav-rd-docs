@@ -640,11 +640,19 @@ admin con CRUD de noticias/testimonios/FAQ/contenido de página/contabilidad.
   entregado. Sería el canal de respaldo, ya no el único camino
   disponible (el correo real ya funciona).
 
-### Próxima funcionalidad a construir (sin bloqueo, lista para empezar)
+### SEO / Google Search Console — pendiente de re-confirmar con el dominio nuevo
 
-- **Diploma compartible en redes sociales** — ver sección al inicio de
-  este documento, diseño completo y acordado, solo falta escribir el
-  código.
+- Antes de esta sesión se había empezado a registrar el sitio en Google
+  (verificación de propiedad en Search Console + envío de un
+  `sitemap.xml`), pero eso se hizo **con el dominio anterior** —
+  nunca se terminó de confirmar ni quedó documentado en ningún archivo
+  de contexto. Ahora que `www.muvordvial.com` es la URL real de
+  producción (ver entrada 27/08/2026), ese registro probablemente quedó
+  inválido o apuntando al dominio equivocado.
+- **No asumir que hay que empezar de cero** — primero auditar qué existe
+  hoy en Search Console y en el repo (ver el detalle completo del
+  checklist en ARQUITECTURA_FRONTEND.md, sección "Pendiente real
+  (frontend)") y recién ahí decidir qué reconfigurar.
 
 ### Corrección de documentación pendiente (sin bloqueo)
 
@@ -692,6 +700,10 @@ admin con CRUD de noticias/testimonios/FAQ/contenido de página/contabilidad.
 
 ### Ya resuelto (para no volver a preguntarlo)
 
+- Diploma compartible en redes sociales — construido de principio a fin,
+  ver entrada 06-07/08/2026. Quedaba mal listado como pendiente en
+  versiones viejas de este documento por un descuido de limpieza;
+  corregido aquí, sin impacto en código.
 - Dominio propio verificado en Resend (`muvordvial.com`) + `www.muvordvial.com`
   como dominio de producción en Vercel — resuelto el 27/08/2026 (ver esa
   entrada). El correo transaccional real ya funciona, incluida la
