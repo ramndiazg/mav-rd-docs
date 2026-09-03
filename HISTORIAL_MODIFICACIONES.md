@@ -4,6 +4,119 @@
 > ARQUITECTURA_BACKEND.md, ARQUITECTURA_FRONTEND.md y DATABASE.md, este
 > archivo es solo un changelog, no la fuente de verdad de cómo funciona nada.
 
+## 28/08/2026 — SEO con dominio propio + corrección de estado real de contenido + fix de UI en aula virtual
+
+### Contexto de arranque
+
+Continuación directa de la sesión del 27/08 (dominio + Resend). Al
+revisar Google Search Console se confirmó que ya existía trabajo de SEO
+real hecho en una sesión sin documentar entre el 13/08 y el 27/08 —
+sitemap, robots.txt, metadata completa con JSON-LD, y una propiedad ya
+verificada en Search Console — pero todo apuntando al dominio viejo. Se
+migró todo al dominio propio y, en el proceso, se destapó que el
+contenido real de las 4 sesiones (que también se había cargado en esa
+misma sesión sin documentar) tiene defectos serios que obligan a
+recrearlo desde cero.
+
+### SEO migrado al dominio propio
+
+- **Google Search Console**: la propiedad vieja (`muvo-rd.vercel.app`,
+  tipo "Prefijo de URL") tenía 9 páginas indexadas y un sitemap activo
+  desde mayo/2026 — confirmado con capturas reales, no se perdió nada,
+  solo quedó desactualizada. Se creó una propiedad nueva tipo
+  **"Dominio"** para `muvordvial.com`, verificada por DNS (registro TXT
+  agregado en Vercel → DNS Records, mismo lugar que Resend) —
+  verificó al primer intento.
+- **`app/sitemap.ts`** y **`app/robots.ts`**: ambos tenían `SITE_URL`
+  quemado al dominio viejo — corregidos a `https://www.muvordvial.com`.
+  Además, `robots.ts` **bloqueaba `/inscripcion` por error** en el
+  `disallow` (página pública de marketing, no debía estar ahí) — el
+  usuario confirmó que fue un descuido, no intencional, y se quitó.
+- **`app/layout.tsx`**: metadata SEO ya bastante completa desde antes
+  (título, descripción con lenguaje de búsqueda real, Open Graph,
+  Twitter Card, JSON-LD Schema.org `EducationalOrganization`) —
+  mismo problema de `SITE_URL` quemado, corregido. Se evaluó agregar el
+  código de verificación de Google como método de respaldo, pero
+  propiedades tipo "Dominio" en Search Console solo ofrecen
+  verificación por DNS, no por etiqueta HTML — no aplicaba, se descartó
+  ese paso.
+- Sitemap reenviado a la propiedad nueva (Correcto, 10 páginas) y se
+  solicitó indexación manual de home, `/empresas` y `/registro`.
+- Se evaluó agregar "escuela de choferes" como palabra clave — descartado
+  por desalineado con el producto real (sugiere formación profesional,
+  no un curso para principiantes); también se aclaró que la etiqueta
+  meta `keywords` no tiene efecto real en Google desde 2009, así que el
+  trabajo de SEO real está en el contenido/títulos/descripciones, no en
+  una lista de palabras oculta.
+
+Ver ARQUITECTURA_FRONTEND.md, sección "SEO real", para el detalle
+técnico completo.
+
+### Corrección de estado real de contenido (destapado, no resuelto)
+
+Al revisar `app/page.tsx` para el trabajo de SEO, salieron a la luz
+varias cosas hechas en la sesión sin documentar (comentarios internos
+fechados 13/08 y 16/08/2026 en el código):
+
+- Los 4 temas reales del curso sí se definieron y se usan como copy en
+  el home ("Bienvenida y Cultura Vial", "Marco Legal y Señalización",
+  "El Vehículo: Mecánica y Seguridad", "Técnicas de Conducción").
+- Se cargó contenido real en `ContenidoSesion` con títulos reales por
+  material (ej. "1.1 Bienvenida a Muvo RD Vial") — confirmado con
+  captura real del aula virtual.
+- Se crearon las 4 versiones de `Examen`.
+- Se agregó una sección de promoción del libro de la fundadora en el
+  home (portada, cita, links reales a Amazon física/Kindle), con dos
+  clases de color nuevas (`brand-yellow`, `brand-mamey`) no
+  documentadas en los tokens de Tailwind.
+
+**Pero al confirmar con el usuario, salieron dos bugs serios que
+invalidan ese contenido tal como está:**
+
+1. **PDFs con errores de codificación** — texto con símbolos y marcas
+   extrañas, no presentable a una estudiante real.
+2. **Examen con la respuesta correcta siempre en la opción A**, en
+   todas las preguntas — patrón predecible y explotable, probablemente
+   porque el proceso que generó las preguntas no aleatorizó el orden de
+   las opciones.
+
+**Decisión del usuario:** borrar todo (`ContenidoSesion` + `Examen`)
+vía `curl` contra los endpoints reales (no a mano en Atlas, para no
+romper referencias) y recrear desde cero — PDFs corregidos, opciones de
+examen aleatorizadas. Esto queda como pendiente de **alta prioridad**,
+no resuelto — ver la lista de pendientes al final de este documento.
+
+También se confirmó, revisando una captura real del aula virtual, que
+**`Sesion.titulo` sigue en "Sesión 1"..."Sesión 4"** — los títulos
+reales solo llegaron a los materiales individuales (`ContenidoSesion`),
+no al nivel de la sesión misma. Ese rename sigue pendiente.
+
+### Fix de UI: contenido de aula virtual desordenado según el tipo
+
+El usuario reportó que el botón "Marcar como visto" se veía mal
+alineado cuando el contenido era `pdf` o `enlace` (pegado justo al lado
+del link "Abrir PDF ↗"/"Abrir enlace ↗"), mientras que en `video` y
+`texto` se veía bien (en su propia línea, aunque no centrado).
+
+Causa raíz identificada leyendo `aula-virtual/[sesion]/page.tsx`: los
+bloques de `video` y `texto` envuelven su contenido en un `<div>` de
+bloque, lo que empuja el botón siguiente a su propia línea de forma
+natural. Los bloques de `pdf` y `enlace` eran un simple `<a
+className="inline-block">` — al ser inline, el navegador lo colocaba en
+la misma línea que el botón si había espacio.
+
+Fix aplicado, confirmado probado en producción con los 4 tipos:
+
+- `pdf` y `enlace` pasaron de link de texto suelto a una tarjeta de
+  bloque completo (borde, fondo `bg-neutral-bg`, centrado), mismo peso
+  visual que el recuadro de video.
+- El botón "Marcar como visto" ahora está centrado (`flex
+justify-center`) para los 4 tipos por igual, no solo alineado a la
+  izquierda.
+
+Cambio 100% visual — no se tocó lógica de `marcarVisto()`,
+`intentarDesbloquear`, ni ningún endpoint.
+
 ## 27/08/2026 — Dominio propio en Vercel + Resend, envío de correos desbloqueado
 
 ### Contexto de arranque
@@ -628,6 +741,20 @@ admin con CRUD de noticias/testimonios/FAQ/contenido de página/contabilidad.
 
 ## Pendientes abiertos (reemplaza cualquier lista anterior de esta sección)
 
+### ALTA PRIORIDAD (28/08/2026) — recrear contenido real de las 4 sesiones
+
+- **`ContenidoSesion` (PDFs) y `Examen` deben borrarse y recrearse desde
+  cero.** Se cargaron en una sesión sin documentar, pero con dos bugs
+  serios: PDFs con errores de codificación (texto con símbolos
+  extraños) y exámenes con la respuesta correcta siempre en la opción A
+  (patrón explotable). Ver entrada 28/08/2026 arriba para el detalle
+  completo, y ARQUITECTURA_BACKEND.md / DATABASE.md para el plan (borrar
+  vía `curl` contra los endpoints reales, no a mano en Atlas; recrear
+  con PDFs corregidos y opciones de examen aleatorizadas).
+- Aprovechar ese mismo momento para renombrar `Sesion.titulo` (sigue en
+  "Sesión 1"..."Sesión 4" — solo los materiales individuales tienen
+  títulos reales, no la sesión en sí).
+
 ### Prioridad #1 — pendiente, sin bloqueo (ya no depende de la fundadora)
 
 - **Definir el destinatario real de las notificaciones internas** —
@@ -639,20 +766,6 @@ admin con CRUD de noticias/testimonios/FAQ/contenido de página/contabilidad.
   agregarlo en el panel de Notificaciones). Manual paso a paso ya
   entregado. Sería el canal de respaldo, ya no el único camino
   disponible (el correo real ya funciona).
-
-### SEO / Google Search Console — pendiente de re-confirmar con el dominio nuevo
-
-- Antes de esta sesión se había empezado a registrar el sitio en Google
-  (verificación de propiedad en Search Console + envío de un
-  `sitemap.xml`), pero eso se hizo **con el dominio anterior** —
-  nunca se terminó de confirmar ni quedó documentado en ningún archivo
-  de contexto. Ahora que `www.muvordvial.com` es la URL real de
-  producción (ver entrada 27/08/2026), ese registro probablemente quedó
-  inválido o apuntando al dominio equivocado.
-- **No asumir que hay que empezar de cero** — primero auditar qué existe
-  hoy en Search Console y en el repo (ver el detalle completo del
-  checklist en ARQUITECTURA_FRONTEND.md, sección "Pendiente real
-  (frontend)") y recién ahí decidir qué reconfigurar.
 
 ### Corrección de documentación pendiente (sin bloqueo)
 
@@ -697,9 +810,18 @@ admin con CRUD de noticias/testimonios/FAQ/contenido de página/contabilidad.
 - Afinar el rol del usuario `backup_readonly` en Atlas de
   `readAnyDatabase@admin` a un rol Read específico sobre `mav_rd` (mínimo
   privilegio, no urgente ya que es de solo lectura de todas formas).
+- Confirmar los valores hex reales de los tokens de color `brand-yellow`
+  y `brand-mamey` (en uso en el home desde la sesión sin documentar) y
+  actualizar la tabla de colores en ARQUITECTURA_FRONTEND.md.
 
 ### Ya resuelto (para no volver a preguntarlo)
 
+- SEO migrado al dominio propio (sitemap, robots.txt, metadata,
+  propiedad nueva en Search Console verificada) — resuelto el
+  28/08/2026, ver esa entrada. La propiedad vieja de Search Console
+  (`muvo-rd.vercel.app`) no se perdió, solo dejó de ser la relevante.
+- Bug de UI en aula virtual (botón "Marcar como visto" desalineado en
+  contenido tipo pdf/enlace) — resuelto el 28/08/2026, ver esa entrada.
 - Diploma compartible en redes sociales — construido de principio a fin,
   ver entrada 06-07/08/2026. Quedaba mal listado como pendiente en
   versiones viejas de este documento por un descuido de limpieza;

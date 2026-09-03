@@ -1,6 +1,6 @@
 # Arquitectura del Backend — mav-rd-backend
 
-> Refleja el estado REAL del código al 27/08/2026. Reemplaza la versión
+> Refleja el estado REAL del código al 28/08/2026. Reemplaza la versión
 > anterior de este mismo archivo. Para el historial de cómo se llegó aquí,
 > ver HISTORIAL_MODIFICACIONES.md.
 
@@ -159,14 +159,32 @@ Flujo completo:
    vez de subir un archivo), el frontend usa `url` directo. Contenido
    viejo (de antes de este cambio) sigue funcionando así.
 
-**Todavía no se cargó contenido real** — la colección sigue vacía de
-PDFs/material real, solo se confirmó que el flujo de subida despliega y
-responde bien. Pendiente cargar contenido de verdad cuando estén listos
-los temas reales de las 4 sesiones.
+**Actualización 28/08/2026 — contenido cargado, pero con errores
+graves, hay que rehacerlo:** en una sesión sin documentar (entre el
+13/08 y el 27/08) sí se cargó contenido real para las 4 sesiones —
+títulos reales por material ("1.1 Bienvenida a Muvo RD Vial", etc.) —
+pero los **PDFs tienen errores de codificación** (marcas y símbolos
+extraños en el texto, no presentables a una estudiante real). El flujo
+técnico en sí (subida → Cloudinary → URL firmada) sigue funcionando
+bien — el problema es la calidad de los archivos originales, no el
+código. Plan acordado con el usuario: **borrar todo vía `curl`** contra
+los endpoints reales (no a mano en Atlas) y volver a subir los PDFs
+corregidos. Ver también DATABASE.md (sección `contenidoSesion`) y el
+mismo problema en paralelo con `Examen` (ver más abajo).
 
 ### `intentarDesbloquear()` y `entregarIntento()` — sin cambios en esta sesión
 
 Sin cambios de comportamiento desde la versión anterior de este archivo.
+
+### `Examen` — creados, pero con un bug grave (28/08/2026)
+
+Las 4 versiones (una por sesión) sí se llegaron a crear en una sesión
+sin documentar, pero el usuario detectó que **la respuesta correcta
+cae siempre en la opción A**, en todas las preguntas — patrón
+predecible que cualquier estudiante puede explotar sin siquiera leer la
+pregunta. Ver el detalle completo en DATABASE.md (sección `examenes`).
+Mismo plan que `ContenidoSesion`: borrar vía `curl` y recrear, esta vez
+con las opciones en orden aleatorio por pregunta antes de guardar.
 
 ## Diplomas (/api/diplomas)
 
@@ -223,6 +241,17 @@ explícita: evaluar demanda real antes de construir esa lógica).
 
 ## Pendiente real (backend)
 
+- **ALTA PRIORIDAD (28/08/2026): borrar y recrear `ContenidoSesion` +
+  `Examen` desde cero.** Ambos se cargaron en una sesión sin documentar,
+  pero con defectos serios — PDFs con codificación rota y exámenes con
+  la respuesta correcta siempre en la opción A. Ver detalle completo en
+  las secciones de arriba y en DATABASE.md. Plan: borrar vía `curl`
+  contra los endpoints reales, recrear con PDFs corregidos y opciones de
+  examen aleatorizadas.
+- Renombrar las 4 `Sesion` (`Sesion.titulo` sigue en "Sesión
+  1"..."Sesión 4", confirmado en captura real del 28/08/2026) — a mano
+  vía `PATCH /sesiones/:numero` hasta que exista un formulario en el
+  panel. Buen momento para hacerlo junto con el punto de arriba.
 - **Definir el destinatario real de `DestinatarioNotificacion`:** hoy el
   único registro `activo: true` de tipo email sigue siendo una cuenta
   personal de pruebas (`ramndiaz@gmail.com`), no el correo institucional
@@ -231,12 +260,6 @@ explícita: evaluar demanda real antes de construir esa lógica).
   actualizar/agregar el registro correspondiente.
 - Terminar Telegram para el celular de la fundadora (`chat_id`) — sería
   el canal de respaldo si algún correo de Resend llegara a fallar.
-- Definir los 4 temas reales del curso con la fundadora, renombrar las
-  sesiones (a mano vía `PATCH /sesiones/:numero` hasta que exista un
-  formulario en el panel).
-- Subir `ContenidoSesion` real (con PDFs de verdad, usando el flujo ya
-  construido) y crear versiones de `Examen` para las 4 sesiones — todo
-  sigue vacío.
 - **NUEVO:** evaluar si el formulario de Empresas necesita persistir los
   leads en una colección (hoy solo se envían por correo/Telegram — si
   Resend falla o el mensaje se pierde entre notificaciones, no queda

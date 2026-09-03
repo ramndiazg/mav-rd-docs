@@ -1,6 +1,6 @@
 # Arquitectura del Frontend — mav-rd-frontend
 
-> Refleja el estado REAL del código al 27/08/2026. Reemplaza la versión
+> Refleja el estado REAL del código al 28/08/2026. Reemplaza la versión
 > anterior de este mismo archivo. Para el historial de cómo se llegó aquí,
 > ver HISTORIAL_MODIFICACIONES.md.
 
@@ -56,7 +56,9 @@ la nueva sección de precios del home (ver abajo).
 ```
 mav-rd-frontend/
 ├── app/
-│   ├── page.tsx                          # Inicio — sección de Planes/precios + banner a Empresas (13/08/2026)
+│   ├── page.tsx                          # Inicio — Planes/precios (13/08) + banner Empresas (13/08) + promo libro de la fundadora, colores brand-yellow/brand-mamey nuevos (sesión sin documentar, confirmado 28/08/2026)
+│   ├── sitemap.ts                        # NUEVO (documentado 28/08/2026, existía desde antes sin registrar) — SITE_URL corregido al dominio propio
+│   ├── robots.ts                         # NUEVO (documentado 28/08/2026, existía desde antes sin registrar) — SITE_URL corregido, ya no bloquea /inscripcion por error
 │   ├── empresas/page.tsx                 # NUEVO (13/08/2026) — programa empresarial, informativo + formulario
 │   ├── acerca-de-nosotros/page.tsx
 │   ├── kit-preparacion/page.tsx
@@ -72,7 +74,7 @@ mav-rd-frontend/
 │   ├── verificar-email/page.tsx
 │   ├── dashboard/page.tsx                # SESIONES = [1,2,3,4]
 │   ├── inscripcion/page.tsx              # lee precios de /api/configuracion
-│   ├── aula-virtual/[sesion]/page.tsx    # PDF ahora usa enlace firmado cuando aplica (13/08/2026)
+│   ├── aula-virtual/[sesion]/page.tsx    # PDF con enlace firmado (13/08) + UI de contenido (pdf/enlace/video/texto) unificada y botón "Marcar como visto" centrado para los 4 tipos (28/08/2026)
 │   ├── examen/[intentoId]/page.tsx
 │   ├── (estudiante)/
 │   │   └── diploma/page.tsx
@@ -94,7 +96,7 @@ mav-rd-frontend/
 │   │   ├── admin/contabilidad/page.tsx
 │   │   ├── admin/contenido-pagina/page.tsx
 │   │   └── admin/notificaciones/page.tsx
-│   ├── layout.tsx
+│   ├── layout.tsx                        # Metadata SEO completa (title/description/OG/Twitter/JSON-LD Schema.org) — existía desde una sesión sin documentar (comentario interno fecha 13/08/2026), SITE_URL corregido al dominio propio el 28/08/2026
 │   └── globals.css
 ├── components/
 │   ├── ui/Paginacion.tsx
@@ -108,6 +110,7 @@ mav-rd-frontend/
 │   ├── logo-mav-rd.png
 │   ├── diploma-compartir.jpg
 │   ├── og-image.png
+│   ├── libro-maria-diaz.jpg               # NUEVO — portada del libro de la fundadora, promocionado en el home (sesión sin documentar, confirmado 28/08/2026)
 │   └── inscripcion/
 │       ├── teoria-1.jpg, teoria-2.jpg, teoria-3.jpg
 │       ├── practica-vip.jpg
@@ -118,7 +121,7 @@ mav-rd-frontend/
 └── package.json
 ```
 
-## Tokens de color (Tailwind) — sin cambios
+## Tokens de color (Tailwind) — 2 tokens nuevos sin confirmar (28/08/2026)
 
 ```js
 colors: {
@@ -127,6 +130,12 @@ colors: {
     blueLight: '#4A7FC9',
     pink: '#D6336C',
     pinkLight: '#FBE4EC',
+    // NUEVOS, en uso real en app/page.tsx (bg-brand-yellow,
+    // border-brand-mamey) pero sin confirmar su valor hex exacto —
+    // pendiente revisar tailwind.config.ts directamente. "Mamey" es el
+    // naranja que se usa en señales de tránsito de precaución.
+    yellow: '#PENDIENTE_CONFIRMAR',
+    mamey: '#PENDIENTE_CONFIRMAR',
   },
   neutral: { bg: '#F7F8FA', text: '#1F2937' },
   status: { success: '#2F9E44', warning: '#F0A500' },
@@ -164,7 +173,7 @@ pendiente de un formulario dedicado.
 
 ## Diploma compartible en redes sociales — sin cambios en esta sesión
 
-## NUEVO: Contenido de estudio en PDF — subida real de archivo (13/08/2026)
+## Contenido de estudio en PDF — subida real de archivo (13/08/2026)
 
 `panel/aula-virtual/page.tsx` — cuando el tipo de material es "pdf", el
 formulario ya no pide pegar una URL a mano: hay un selector de archivo
@@ -172,21 +181,96 @@ formulario ya no pide pegar una URL a mano: hay un selector de archivo
 `subirImagenContenido`) que sube a `POST /api/uploads/pdf` y guarda tanto
 `url` como `publicIdCloudinary` en el formulario.
 
-`aula-virtual/[sesion]/page.tsx` — el enlace "Abrir PDF ↗" ahora apunta
-al endpoint firmado del backend
-(`/contenido-sesion/:id/archivo?token=...`) cuando el material tiene
-`publicIdCloudinary`; si no lo tiene (contenido viejo con URL pegada a
-mano), usa `url` directo como antes. Ver ARQUITECTURA_BACKEND.md para el
-porqué de la URL firmada (Cloudinary bloquea la entrega pública de
-recursos `raw` sin firmar).
+`aula-virtual/[sesion]/page.tsx` — el enlace "Abrir PDF ↗" apunta al
+endpoint firmado del backend (`/contenido-sesion/:id/archivo?token=...`)
+cuando el material tiene `publicIdCloudinary`; si no lo tiene (contenido
+viejo con URL pegada a mano), usa `url` directo como antes. Ver
+ARQUITECTURA_BACKEND.md para el porqué de la URL firmada (Cloudinary
+bloquea la entrega pública de recursos `raw` sin firmar).
 
-**Todavía no se cargó contenido real** — solo se confirmó que el flujo
-completo (subir → guardar → abrir) funciona en producción.
+**Actualización 28/08/2026 — contenido cargado, pero hay que rehacerlo:**
+en una sesión sin documentar sí se cargó contenido real (títulos reales
+por material, ej. "1.1 Bienvenida a Muvo RD Vial"), pero los PDFs
+subidos tienen errores de codificación (texto con símbolos extraños) y
+no son presentables. El flujo técnico en sí funciona bien — es la
+calidad de los archivos lo que hay que corregir. Ver ARQUITECTURA_BACKEND.md
+y DATABASE.md para el plan de borrar vía `curl` y recargar.
 
 Pendiente, sin empezar: texto enriquecido con imágenes incrustadas
 dentro de `contenidoTexto` (hoy es un string plano de HTML/Markdown sin
 editor visual) — se identificó como pedido aparte, más grande, no
 incluido en este bloque de trabajo.
+
+## NUEVO: UI de contenido en aula virtual unificada entre los 4 tipos (28/08/2026)
+
+Bug real detectado por el usuario en `aula-virtual/[sesion]/page.tsx`:
+para contenido tipo `video` y `texto`, el botón "Marcar como visto"
+caía en su propia línea de forma natural (el contenido vivía dentro de
+un `<div>` de bloque). Para `pdf` y `enlace`, el link era un `<a
+className="inline-block">` — al ser `inline-block`, el navegador lo
+ponía en la misma línea que el botón siguiente si había espacio,
+quedando visualmente pegados y desordenados.
+
+Fix aplicado: los 4 tipos de contenido ahora tienen tratamiento visual
+consistente.
+
+- `pdf` y `enlace` pasaron de ser un link de texto suelto a una tarjeta
+  de bloque completo (borde + fondo `bg-neutral-bg`, `flex
+items-center justify-center`, mismo peso visual que el recuadro de
+  video).
+- El botón "Marcar como visto" ahora vive dentro de un `<div
+className="flex justify-center">` para los 4 tipos por igual, en vez
+  de quedar alineado a la izquierda solo en video/texto.
+
+No se tocó la lógica de `marcarVisto()`, `intentarDesbloquear`, ni
+ningún endpoint — cambio 100% visual, confirmado probado en producción
+con los 4 tipos de contenido.
+
+## NUEVO: SEO real — sitemap, robots, metadata y Search Console con el dominio propio (28/08/2026)
+
+Trabajo de SEO que en parte ya existía de una sesión sin documentar
+(comentarios internos fechados 13/08/2026 y 16/08/2026 en el código),
+descubierto y corregido en esta sesión al migrar al dominio propio.
+
+**`app/sitemap.ts`** (Next.js App Router, genera `/sitemap.xml`
+dinámicamente): listaba 10 páginas públicas con prioridad y frecuencia
+de cambio — `SITE_URL` estaba quemado al dominio viejo
+(`muvo-rd.vercel.app`), corregido a `https://www.muvordvial.com`.
+
+**`app/robots.ts`** (genera `/robots.txt`): bloquea rutas privadas
+(`/dashboard`, `/panel`, `/admin`, `/aula-virtual`, `/examen`,
+`/perfil`) y apunta al sitemap. Tenía dos problemas: mismo `SITE_URL`
+del dominio viejo, y **bloqueaba `/inscripcion` por error** — es una
+página pública de marketing, no debía estar en el `disallow` (el
+usuario confirmó que fue sin querer). Ambos corregidos.
+
+**`app/layout.tsx`** (metadata global): ya tenía, de la sesión sin
+documentar, una configuración de SEO bastante completa — título con
+template, descripción orientada a búsqueda real ("escuela de manejo
+Santo Domingo", "licencia de conducir INTRANT", etc.), array de
+`keywords` (sin efecto real en ranking desde que Google lo dejó de usar
+en 2009, pero inofensivo dejarlo), Open Graph, Twitter Card, y un bloque
+JSON-LD de Schema.org (`EducationalOrganization`) con dirección,
+fundadora y fecha de fundación. El único problema real era, otra vez,
+`SITE_URL` quemado al dominio viejo — corregido.
+
+**Google Search Console:** la propiedad vieja (`https://muvo-rd.vercel...`,
+tipo "Prefijo de URL") seguía activa con 9 páginas indexadas y un
+sitemap funcionando desde mayo/2026 — nada de esto se perdió, solo
+quedó huérfana del dominio nuevo. Se creó una propiedad nueva tipo
+**"Dominio"** para `muvordvial.com` (cubre `www`/sin `www`/http/https a
+la vez), verificada por DNS (registro TXT agregado en Vercel → Domains
+→ DNS Records, mismo lugar que los registros de Resend). Sitemap
+reenviado y confirmado ("Correcto", 10 páginas descubiertas). Se
+solicitó indexación manual de home, `/empresas` y `/registro` para
+acelerar el rastreo en vez de esperar el orgánico.
+
+**Nota de negocio (28/08/2026):** se evaluó agregar "escuela de
+choferes" como término de búsqueda objetivo, pero se descartó — en RD
+ese término sugiere formación de conductores profesionales, no coincide
+con lo que Muvo ofrece (curso para principiantes) y podría atraer
+tráfico que rebota rápido. Se mantuvo el lenguaje ya usado en el sitio
+("aprender a manejar", "escuela de manejo", "examen del INTRANT").
 
 ## NUEVO: Home — sección de Planes y Precios (13/08/2026)
 
@@ -212,6 +296,17 @@ Inspirado en el análisis de la competencia (academiavial.com) — se tomó
 la idea de mostrar precios desde el inicio, pero **no** se replicó su
 estructura de múltiples "programas": Muvo vende un solo curso con dos
 variantes de práctica, no un catálogo.
+
+## NUEVO: Home — promoción del libro de la fundadora + colores nuevos (sesión sin documentar, confirmado 28/08/2026)
+
+`app/page.tsx` gana una sección entre "Planes y Precios" y
+"Testimonios" promocionando el libro de María Díaz ("Cómo protegerte de
+un conductor temerario"), con portada (`public/libro-maria-diaz.jpg`),
+cita del libro, y dos botones reales hacia Amazon (versión física y
+Kindle). Usa dos clases de color nuevas no documentadas antes en los
+tokens de Tailwind: `bg-brand-yellow` y `border-brand-mamey` — ver nota
+en "Tokens de color" arriba, valores hex pendientes de confirmar
+directo en `tailwind.config.ts`.
 
 ## NUEVO: Página `/empresas` (13/08/2026)
 
@@ -239,18 +334,27 @@ como el móvil desde un solo lugar).
 ## Pendiente real (frontend)
 
 - Agregar la sección "Lo que aprendiste" (temas reales) a la imagen del
-  diploma compartible, cuando estén definidos los 4 temas.
+  diploma compartible — ya se puede hacer, los 4 temas reales existen
+  (ver `ContenidoSesion` en ARQUITECTURA_BACKEND.md), aunque están
+  pendientes de recrearse por el problema de PDFs corruptos.
 - Confirmar y corregir el alcance real del grupo de ruta `(estudiante)`.
 - Revisar lenguaje de género en `testimonios/page.tsx` y
   `registro/page.tsx`.
 - Reemplazar las fotos de `public/inscripcion/` cuando haya material
   nuevo que refleje la audiencia ampliada.
 - Construir un formulario en `panel/aula-virtual/page.tsx` para
-  renombrar sesiones desde el panel.
-- Cargar contenido real (PDFs, videos, texto) en las 4 sesiones —
-  el flujo ya está listo, falta el contenido.
+  renombrar sesiones desde el panel (sigue sin existir; hoy es solo vía
+  `PATCH /sesiones/:numero` a mano).
+- **ALTA PRIORIDAD (28/08/2026):** recargar `ContenidoSesion` (PDFs) y
+  `Examen` desde cero — el contenido actual tiene errores de
+  codificación y un bug de examen (respuesta siempre en A). Ver
+  ARQUITECTURA_BACKEND.md y DATABASE.md para el detalle y el plan
+  (borrar vía `curl`, recrear).
 - Texto enriquecido con imágenes incrustadas en `contenidoTexto` — pedido
   identificado, no empezado.
+- Confirmar los valores hex reales de `brand-yellow` y `brand-mamey` en
+  `tailwind.config.ts` y actualizar la tabla de tokens de color de este
+  documento (hoy están marcados como pendiente de confirmar).
 - **NUEVO:** unificar la convención de nombres de color de Tailwind
   (`brand-blue-light` vs `brand-blueLight`) — inconsistente entre
   archivos, sin urgencia.
@@ -258,29 +362,3 @@ como el móvil desde un solo lugar).
   (inspirado en academiavial.com), evaluar `framer-motion` — no se
   agregó en este bloque de trabajo, quedó fuera de alcance.
 - "Me gusta" en comentarios individuales de noticias.
-- **NUEVO (27/08/2026): Re-confirmar registro en Google Search Console
-  con el dominio nuevo.** En algún momento antes de esta sesión se había
-  empezado a registrar el sitio en Google (verificar propiedad en
-  Search Console + enviar un `sitemap.xml`), pero **con el dominio
-  viejo** (`muvo-rd.vercel.app` o `muvordvial.com` antes del cambio de
-  DNS) — nunca quedó confirmado ni documentado, y ahora que la URL de
-  producción es `www.muvordvial.com` hay que asumir que ese registro
-  quedó huérfano o inválido. No hay certeza de qué método de
-  verificación se usó (DNS/TXT vs. archivo/meta tag) ni si el sitemap
-  se generó desde código o se subió a mano — **antes de rehacer nada,
-  la próxima sesión debe auditar el estado real:**
-  1. Entrar a Google Search Console (search.google.com/search-console)
-     y revisar qué propiedades existen hoy — es probable que solo
-     aparezca `muvo-rd.vercel.app` o el dominio sin `www`.
-  2. Revisar el repo del frontend por un archivo `sitemap.xml`, una ruta
-     `app/sitemap.ts`/`sitemap.xml/route.ts` (convención de Next.js App
-     Router), o un `next-sitemap.config.js` — hoy no hay nada de esto
-     documentado en la estructura de carpetas de este archivo, así que
-     puede que el sitemap se haya generado/subido manualmente y no viva
-     en código.
-  3. Con eso claro, agregar `www.muvordvial.com` como propiedad nueva en
-     Search Console (verificación recomendada por DNS ya que el dominio
-     vive en Vercel — mismo patrón que se usó para verificar el dominio
-     en Resend), generar/confirmar el sitemap real, enviarlo, y pedir
-     indexación de las páginas públicas principales (home, `/empresas`,
-     `/inscripcion`, etc.).

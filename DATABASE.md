@@ -4,7 +4,7 @@
 > mujeresalvolante.rd4sofa.mongodb.net (versión real confirmada: 8.0.29).
 > Mongoose como ODM. Todas las colecciones usan \_id (ObjectId) automático
 > y createdAt/updatedAt (timestamps automáticos de Mongoose), salvo que se
-> indique lo contrario. Refleja el estado real al 13/08/2026.
+> indique lo contrario. Refleja el estado real al 28/08/2026.
 
 ---
 
@@ -14,15 +14,15 @@ Se corrió `scripts/purgarDatosPrueba.js` (backend) en modo real. Conteos
 purgados:
 
 | Colección             | Documentos borrados |
-| --------------------- | -------------------- |
-| users (excepto admin) | 17                   |
-| sesiones              | 3                    |
-| examenes              | 15                   |
-| contenidoSesion       | 22                   |
-| intentosExamen        | 30                   |
-| progresoEstudiante    | 11                   |
-| inscripciones         | 13                   |
-| diplomas              | 6                    |
+| --------------------- | ------------------- |
+| users (excepto admin) | 17                  |
+| sesiones              | 3                   |
+| examenes              | 15                  |
+| contenidoSesion       | 22                  |
+| intentosExamen        | 30                  |
+| progresoEstudiante    | 11                  |
+| inscripciones         | 13                  |
+| diplomas              | 6                   |
 
 **Sobrevivió únicamente** la cuenta `maria@test.com` (rol `admin`).
 
@@ -95,12 +95,18 @@ Atlas (ver pendientes en ARQUITECTURA_BACKEND.md).
 }
 ```
 
-4 documentos con títulos provisionales ("Sesión 1"..."Sesión 4").
+4 documentos con títulos **todavía provisionales** ("Sesión 1"..."Sesión
+4") — confirmado el 28/08/2026 revisando la pantalla real del aula
+virtual (el `<h1>` sigue mostrando "Sesión 1", no un tema real).
 Renombrarlos a los temas reales es una simple actualización de `titulo`
 vía `PATCH /sesiones/:numero`, no requiere cambio de esquema ni de
-código — sigue pendiente definir esos temas con la fundadora.
+código. **Aclaración importante:** esto es distinto de los títulos de
+`ContenidoSesion` (ver más abajo) — esos sí tienen nombres reales
+("1.1 Bienvenida a Muvo RD Vial", etc.), pero son los títulos de cada
+material individual dentro de la sesión, no el título de la sesión
+misma. Sigue pendiente renombrar el nivel de `Sesion.titulo`.
 
-## 5. examenes — sin cambios de esquema, colección vacía
+## 5. examenes — YA NO está vacía, pero tiene un bug grave (28/08/2026)
 
 ```js
 {
@@ -113,8 +119,16 @@ código — sigue pendiente definir esos temas con la fundadora.
 }
 ```
 
-Pendiente crear versiones nuevas para las 4 sesiones una vez definido el
-contenido real.
+Se crearon las 4 versiones (una por sesión), pero con un **bug serio
+detectado por el usuario**: la respuesta correcta cae siempre en la
+opción A, en todas las preguntas — patrón predecible y fácilmente
+explotable por cualquier estudiante que se dé cuenta (probablemente el
+proceso que generó las preguntas no aleatorizó el orden de las
+opciones). **No usable en este estado.** Plan acordado: borrar todo
+(vía `curl` contra los endpoints reales, no a mano en Atlas) y volver a
+crear las 4 versiones desde cero, esta vez con las opciones en orden
+aleatorio por pregunta. Ver Pendiente (base de datos) al final de este
+documento.
 
 ## 6. intentosExamen — sin cambios de esquema, colección vacía
 
@@ -141,9 +155,17 @@ contenido real.
 }
 ```
 
-Colección todavía vacía de contenido real — el flujo de subida de PDF ya
-se probó en producción, pero no se ha cargado ningún material real
-todavía.
+Se cargó contenido real para las 4 sesiones (títulos reales tipo "1.1
+Bienvenida a Muvo RD Vial", "1.2 Cultura Vial y el Valor de la Vida",
+etc. — confirmados en captura real del aula virtual), pero **con un
+problema serio detectado el 28/08/2026**: los PDFs subidos tienen
+errores de codificación — texto con marcas y símbolos extraños,
+ilegible o poco profesional para una estudiante real. **No usable en
+este estado.** Mismo plan que `examenes`: borrar todo vía `curl` y
+volver a subir los PDFs corregidos desde cero. El flujo técnico de
+subida en sí (Cloudinary + URL firmada) sigue funcionando bien — el
+problema es la calidad/codificación de los archivos PDF originales, no
+el código del sistema.
 
 ## 9. diplomas — sin cambios de esquema, colección vacía tras la purga
 
@@ -186,10 +208,18 @@ los leads que llegan por ahí (solo se notifican por correo/Telegram).
 
 ## Pendiente (base de datos)
 
-- Definir los 4 temas reales del curso, renombrar las sesiones, y cargar
-  `contenidoSesion` + `examenes` reales para cada una — sigue en 0
-  documentos, es trabajo pendiente completo, no una migración de datos
-  existentes.
+- **ALTA PRIORIDAD (28/08/2026): borrar y recrear `examenes` +
+  `contenidoSesion` desde cero.** Ambas colecciones tienen contenido
+  cargado pero defectuoso — ver el detalle en las secciones 5 y 8 de
+  arriba (respuesta siempre en A / PDFs con codificación rota). Plan:
+  borrar todo vía `curl` contra los endpoints reales (no a mano en
+  Atlas, para no romper referencias con `Sesion`/`ProgresoEstudiante`),
+  luego volver a crear los 4 exámenes con opciones aleatorizadas y
+  volver a subir los PDFs corregidos.
+- Renombrar `Sesion.titulo` de las 4 sesiones (siguen en "Sesión
+  1"..."Sesión 4") a los temas reales — separado del pendiente de
+  arriba, pero buen momento para hacerlo junto ya que se va a tocar
+  contenido de las mismas sesiones de todas formas.
 - Evaluar si el formulario de Empresas necesita una colección propia
   para no depender solo del correo/Telegram (ver ARQUITECTURA_BACKEND.md).
 - Construir una UI de admin para editar `configuracion` (precios) en vez
