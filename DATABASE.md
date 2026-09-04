@@ -4,7 +4,7 @@
 > mujeresalvolante.rd4sofa.mongodb.net (versión real confirmada: 8.0.29).
 > Mongoose como ODM. Todas las colecciones usan \_id (ObjectId) automático
 > y createdAt/updatedAt (timestamps automáticos de Mongoose), salvo que se
-> indique lo contrario. Refleja el estado real al 28/08/2026.
+> indique lo contrario. Refleja el estado real al 04/09/2026.
 
 ---
 
@@ -177,10 +177,34 @@ el código del sistema.
 
 ## 16. destinatariosNotificacion — sin cambios, no purgada
 
-Es el mismo mecanismo que ahora también usa la solicitud del formulario
-de Empresas (ver ARQUITECTURA_BACKEND.md) — no se agregó ninguna
-colección nueva para ese formulario, y por ahora tampoco se persisten
-los leads que llegan por ahí (solo se notifican por correo/Telegram).
+Es el mismo mecanismo que usan la solicitud del formulario de Empresas,
+el chatbot no (es consulta directa, no notificación push) y el nuevo
+resumen diario automatizado (ver ARQUITECTURA_BACKEND.md) — no se
+agregó ninguna colección nueva para el mecanismo de envío en sí.
+
+## 17. solicitudesEmpresariales — NUEVA (04/09/2026)
+
+```js
+{
+  _id: ObjectId,
+  nombreEmpresa: String,
+  contacto: String,
+  cargo: String,        // opcional
+  telefono: String,
+  email: String,
+  cantidadEstudiantes: Number,  // opcional
+  mensaje: String,       // opcional
+  contactado: Boolean,   // default false — para que la fundadora (o el
+                          // chatbot) sepan si ya se le dio seguimiento
+  createdAt: Date, updatedAt: Date
+}
+```
+
+Antes, el formulario de `/empresas` solo enviaba una notificación por
+correo/Telegram sin guardar nada — si Resend fallaba, no quedaba
+registro. Ahora se guarda primero y luego se notifica, resolviendo ese
+pendiente. También es la colección que consulta la herramienta
+`solicitudesEmpresariales` del chatbot nuevo (ver ARQUITECTURA_BACKEND.md).
 
 ---
 
@@ -196,6 +220,8 @@ los leads que llegan por ahí (solo se notifican por correo/Telegram).
 - examenes: recomendado { sesionId, activo } (no confirmado si ya existe
   físico en Atlas).
 - balancesMensuales: compuesto único { mes, anio }.
+- solicitudesEmpresariales: { createdAt: -1 } (ya definido en el
+  esquema con `.index()`).
 
 ## Notas de diseño
 
@@ -220,8 +246,6 @@ los leads que llegan por ahí (solo se notifican por correo/Telegram).
   1"..."Sesión 4") a los temas reales — separado del pendiente de
   arriba, pero buen momento para hacerlo junto ya que se va a tocar
   contenido de las mismas sesiones de todas formas.
-- Evaluar si el formulario de Empresas necesita una colección propia
-  para no depender solo del correo/Telegram (ver ARQUITECTURA_BACKEND.md).
 - Construir una UI de admin para editar `configuracion` (precios) en vez
   de cambiarlos a mano en Atlas — ahora que se muestran en el home
   público, un error ahí es más visible.

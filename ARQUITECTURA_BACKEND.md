@@ -1,6 +1,6 @@
 # Arquitectura del Backend — mav-rd-backend
 
-> Refleja el estado REAL del código al 28/08/2026. Reemplaza la versión
+> Refleja el estado REAL del código al 04/09/2026. Reemplaza la versión
 > anterior de este mismo archivo. Para el historial de cómo se llegó aquí,
 > ver HISTORIAL_MODIFICACIONES.md.
 
@@ -36,7 +36,11 @@ cookies) + Cloudinary (archivos) + Resend (email) + Telegram Bot API
   FRONTEND_URL — sigue existiendo, pero ya **no** se usa para CORS (ver
   arriba); solo la usa `utils/notificaciones.js` para armar los links y
   el logo dentro de los correos. Actualizada a `https://www.muvordvial.com`
-  (sin `/` al final).
+  (sin `/` al final). **NUEVAS (04/09/2026):** `GEMINI_API_KEY` (chatbot,
+  ver sección más abajo), `GEMINI_MODEL` (opcional, default
+  `gemini-3.6-flash` en el código), `CRON_SECRET` (protege el endpoint
+  del resumen diario, debe coincidir con el mismo secreto en GitHub
+  Actions).
 - **Bloqueante de Resend resuelto (27/08/2026):** `muvordvial.com` se
   verificó en Resend (DKIM/SPF/DMARC en verde vía "Auto configure",
   conectado directo a la cuenta de Vercel — no hizo falta copiar
@@ -204,20 +208,134 @@ su `tipo` (`email` vía Resend, `telegram` vía Bot API). No se agregó
 ninguna colección ni configuración nueva — llega al mismo correo
 institucional que ya recibe los demás avisos internos.
 
-## NUEVO: Formulario empresarial (Empresas)
+## Formulario empresarial (Empresas)
 
-Primera versión, deliberadamente simple — **solo generación de leads**,
-sin modelo de precios escalonado ni inscripción grupal real (decisión
-explícita: evaluar demanda real antes de construir esa lógica).
+Primera versión (13/08/2026), deliberadamente simple — **solo
+generación de leads**, sin modelo de precios escalonado ni inscripción
+grupal real (decisión explícita: evaluar demanda real antes de
+construir esa lógica).
 
 - `routes/empresasRoutes.js` — `POST /api/empresas/contacto`, público
   (fuera de `protegerRuta`, es un formulario de contacto abierto en
   `/empresas`).
 - `controllers/empresasController.js#enviarContactoEmpresarial` — valida
-  que vengan `nombreEmpresa`, `contacto`, `telefono` y `email`, y llama a
-  `enviarSolicitudEmpresarial`. **No persiste nada en Mongo** — si el
-  correo falla o se pierde, no queda registro. Ver "Pendiente" más abajo.
+  que vengan `nombreEmpresa`, `contacto`, `telefono` y `email`.
+- **ACTUALIZADO (04/09/2026): ahora sí persiste en Mongo.** Se agregó
+  `models/SolicitudEmpresarial.js` (ver DATABASE.md) — el controller
+  guarda el lead primero (`SolicitudEmpresarial.create`) y luego llama a
+  `enviarSolicitudEmpresarial` como ya hacía antes. Si el correo falla,
+  el registro ya quedó guardado — resuelve el pendiente que existía
+  desde el 13/08 ("si Resend falla, no queda registro"). Necesario
+  además para que el chatbot y el resumen diario puedan consultar
+  solicitudes de Empresas (ver secciones nuevas más abajo).
 - Montado en `app.js` como `app.use("/api/empresas", empresasRoutes)`.
+
+## NUEVO: Chatbot interno para la fundadora — Gemini + function calling (04/09/2026)
+
+Idea surgida de una sesión de brainstorm sobre automatización para
+María, que tiene poco tiempo para revisar el panel seguido. Decisión:
+chatbot con acceso de solo lectura a los datos reales de la app (no un
+chatbot genérico) — ella pregunta en lenguaje natural, el modelo decide
+qué consultar, y responde con cifras reales, nunca inventadas.
+
+- **`POST /api/chatbot/preguntar`** (`routes/chatbotRoutes.js`) —
+  exclusivo `admin` (mismo patrón que `destinatarioRoutes.js`,
+  ni siquiera coordinadora tiene acceso). Body: `{ pregunta: string }`.
+- **`controllers/chatbotController.js`** — orquesta un loop de function
+  calling contra la API de Gemini (`generateContent`, formato REST, sin
+  SDK — mismo estilo que `notificaciones.js`, fetch nativo). Hasta 5
+  pasos antes de rendirse, para evitar loops infinitos.
+- **`utils/geminiHerramientas.js`** — 7 herramientas de **solo lectura**
+  (nunca pueden crear/editar/borrar nada): `contarInscripciones`,
+  `contarEstudiantesActivos`, `balanceMes`, `vouchersPendientes`,
+  `buscarEstudiante`, `solicitudesEmpresariales`, `resultadosExamenes`.
+  Cada una es una consulta Mongoose directa contra los modelos reales.
+- **Modelo**: `gemini-3.6-flash` (configurable vía `GEMINI_MODEL`, con
+  ese valor como default). Capa gratuita de Google confirmada vigente
+  (rate-limited, no ilimitada) — requiere API key propia en
+  [aistudio.google.com](https://aistudio.google.com), proyecto de
+  Google Cloud **sin facturación activada** (activarla mata la capa
+  gratuita para ese proyecto).
+
+### Turbulencia real al integrar (documentada para no repetir la
+
+### investigación si Google vuelve a cambiar algo)
+
+Google está iterando la API de Gemini muy rápido (3.6 → 3.7 → 3.8 Flash
+en cuestión de semanas durante 2026). Dos problemas reales encontrados
+al conectar, ambos resueltos:
+
+1. El modelo original usado (`gemini-2.5-flash`) ya no está disponible
+   para cuentas nuevas — el propio error 404 de Google recomendó migrar
+   a `gemini-3.6-flash`. La API `generateContent` en sí sigue
+   totalmente soportada (aunque Google la considera "legacy" frente a
+   su nueva "Interactions API") — no hizo falta reescribir la
+   integración, solo cambiar el nombre del modelo.
+2. **Cambio de formato en function calling con Gemini 3.x**: el rol
+   para devolver el resultado de una herramienta pasó de `"function"` a
+   `"user"`, y cada `functionResponse` ahora debe incluir el mismo `id`
+   que trajo la `functionCall` correspondiente (antes no era
+   obligatorio) — sin esto, Gemini rechaza la request con 400.
+3. Se agregaron reintentos automáticos (hasta 3, con espera creciente)
+   ante errores 503 ("alta demanda") o 429 — comunes en la capa
+   gratuita en picos de uso, y transitorios.
+
+**Si en el futuro un error similar vuelve a aparecer** (Google
+deprecando el modelo actual, o cambiando de nuevo el formato), el
+primer paso es buscar el error exacto — Google documenta bien estos
+cambios y suele indicar la migración exacta en el mensaje de error.
+
+### Frontend
+
+`app/(admin)/admin/asistente/page.tsx` (nuevo) — pantalla de chat
+simple, burbujas de mensaje, 4 preguntas de ejemplo como botones para
+la primera vez, auto-scroll. Accesible desde una tarjeta nueva en
+`panel/page.tsx`, grupo "Solo fundadora" (icono `Bot` de lucide-react).
+Ver ARQUITECTURA_FRONTEND.md.
+
+## NUEVO: Resumen diario automatizado por correo y Telegram (04/09/2026)
+
+Segunda pieza de automatización de la misma sesión de brainstorm. A las
+9:00 PM hora de Santo Domingo, se calcula y envía un resumen de la
+actividad del día — reutiliza el mismo mecanismo de envío que ya usan
+vouchers/balance/empresas (Resend + Telegram Bot API,
+`DestinatarioNotificacion`).
+
+- **`utils/resumenDiario.js`** — `calcularResumenDelDia()` hace las
+  consultas (nuevas inscripciones, pagos confirmados/rechazados,
+  vouchers pendientes **acumulados** — no solo de hoy, nuevos
+  registros, diplomas generados, solicitudes de Empresas, exámenes
+  aprobados/reprobados) y arma el texto plano + HTML.
+- **`POST /api/interno/resumen-diario`** (`routes/resumenRoutes.js` +
+  `controllers/resumenController.js`) — **fuera de `protegerRuta` a
+  propósito**: quien llama es un robot (GitHub Action), no una persona
+  con sesión iniciada. Se verifica un secreto compartido en el header
+  `x-cron-secret` contra `process.env.CRON_SECRET` — mismo espíritu que
+  la verificación manual de token en
+  `GET /contenido-sesion/:id/archivo`, pero aquí el secreto es fijo, no
+  por usuario.
+- **Disparador**: `.github/workflows/resumen-diario.yml` en el repo del
+  backend — GitHub Action programado (`cron: "0 1 * * *"`, que es
+  01:00 UTC = 9:00 PM AST) que hace `POST` al endpoint de arriba. Sin
+  costo — corre en la infraestructura de GitHub, no en Render, así que
+  también sirve para "despertar" a Render si estaba dormido por
+  inactividad (tier free). También soporta disparo manual
+  (`workflow_dispatch`) desde la pestaña Actions, útil para probar sin
+  esperar a la hora programada.
+- **Variable de entorno nueva**: `CRON_SECRET` — debe existir con el
+  mismo valor exacto en Render (Environment) y en GitHub (Settings →
+  Secrets and variables → Actions).
+
+**Nota real de esta sesión, no relacionada al código:** al hacer el
+primer push del archivo `.yml`, GitHub rechazó el push
+(`refusing to allow a Personal Access Token to create or update
+workflow ... without workflow scope`) — los tokens de acceso personal
+necesitan el permiso `workflow` explícito para tocar archivos dentro de
+`.github/workflows/`. Se resolvió subiendo ese archivo específico
+directo desde la interfaz web de GitHub (que no tiene esa restricción)
+y luego sincronizando con `git pull`. Si se vuelve a tocar un archivo
+de Actions desde la terminal, regenerar el Personal Access Token con el
+scope `workflow` incluido evita este paso extra.
 
 ## Scripts de mantenimiento (`scripts/`)
 
@@ -260,11 +378,6 @@ explícita: evaluar demanda real antes de construir esa lógica).
   actualizar/agregar el registro correspondiente.
 - Terminar Telegram para el celular de la fundadora (`chat_id`) — sería
   el canal de respaldo si algún correo de Resend llegara a fallar.
-- **NUEVO:** evaluar si el formulario de Empresas necesita persistir los
-  leads en una colección (hoy solo se envían por correo/Telegram — si
-  Resend falla o el mensaje se pierde entre notificaciones, no queda
-  ningún registro). Bajo esfuerzo si se decide hacerlo, pospuesto a
-  propósito por ahora.
 - **NUEVO:** no existe una UI de admin para editar `Configuracion`
   (`precio_plan_normal`/`precio_plan_vip`) — hoy se cambian a mano en
   Atlas. Ahora que el precio también se muestra en el home público, un
@@ -274,7 +387,18 @@ explícita: evaluar demanda real antes de construir esa lógica).
 - Decidir si vale la pena construir `POST /sesiones` (crear sesión desde
   el panel) o si el script de terminal es suficiente a largo plazo.
 - Recordatorios por correo (examen disponible / voucher sin seguimiento):
-  ideas a futuro, sin diseñar, falta resolver el disparador sin cron real.
+  ideas a futuro, sin diseñar. **Actualización (04/09/2026): el
+  disparador sin cron real ya no es un obstáculo** — el patrón
+  GitHub Action programado → endpoint protegido por `CRON_SECRET`, ya
+  construido para el resumen diario, se puede reutilizar tal cual para
+  estos dos recordatorios. Sigue pendiente solo diseñar el contenido y
+  la frecuencia de cada uno.
+- **NUEVO:** monitorear la vigencia del modelo de Gemini usado en el
+  chatbot (`gemini-3.6-flash`, ver sección de arriba) — Google está
+  reemplazando modelos cada pocas semanas (3.6 → 3.7 → 3.8 Flash
+  durante 2026). Si el chatbot empieza a fallar con error 404, es
+  señal de que hay que revisar el modelo vigente y actualizar
+  `GEMINI_MODEL` en Render.
 - Seguridad/confiabilidad: rotar credenciales expuestas, rate limiting en
   login/verificar-diploma/**empresas/contacto** (formulario público
   nuevo, sin límite de envíos todavía), CORS dinámico, Sentry — al final,

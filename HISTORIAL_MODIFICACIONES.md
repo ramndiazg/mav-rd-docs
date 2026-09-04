@@ -4,6 +4,126 @@
 > ARQUITECTURA_BACKEND.md, ARQUITECTURA_FRONTEND.md y DATABASE.md, este
 > archivo es solo un changelog, no la fuente de verdad de cómo funciona nada.
 
+## 04/09/2026 — Automatización para la fundadora: chatbot con Gemini + resumen diario + persistencia de Empresas
+
+### Contexto de arranque
+
+El usuario planteó un brainstorm: la fundadora tiene poco tiempo para
+estar revisando el panel seguido, ¿qué se puede automatizar? Dos ideas
+concretas sobre la mesa: un chatbot solo para ella (gratis, aunque sea
+con preguntas limitadas) y un resumen diario de actividad por correo y
+Telegram.
+
+Antes de construir, se analizaron opciones reales:
+
+- **Chatbot**: se confirmó que la API de Gemini de Google sigue
+  teniendo una capa gratuita real vigente en 2026 (rate-limited, no
+  ilimitada — hay que crear el proyecto de Google Cloud sin activar
+  facturación, o se pierde la capa gratuita). Se plantearon dos
+  versiones posibles: una simple (el modelo solo resume/explica datos
+  ya calculados) y una completa (function calling — el modelo puede
+  consultar la base de datos con preguntas libres, de solo lectura).
+  **Decisión del usuario: la versión completa.**
+- **Resumen diario**: se identificó que casi toda la infraestructura ya
+  existía (Resend + Telegram Bot API + patrón `DestinatarioNotificacion`)
+  — lo único que faltaba resolver era el disparador, ya que Render se
+  duerme en el tier free y no hay cron real ahí. Se propuso un GitHub
+  Action programado como solución 100% gratuita. **Decisión del
+  usuario: enviarlo al final del día** (9:00 PM hora de Santo Domingo).
+
+### Persistencia de Empresas (requisito previo, no una idea nueva)
+
+Al confirmar el listado de 7 herramientas del chatbot, salió que una de
+ellas ("solicitudes de Empresas por rango de fecha") no se podía
+construir porque ese formulario **nunca guardaba nada en Mongo** — solo
+enviaba una notificación (pendiente ya anotado desde el 13/08, pospuesto
+a propósito en su momento). Se resolvió como parte de este bloque:
+`models/SolicitudEmpresarial.js` nuevo, `empresasController.js`
+actualizado para guardar primero y notificar después (si el correo
+falla, el registro ya quedó guardado). Ver DATABASE.md y
+ARQUITECTURA_BACKEND.md para el detalle.
+
+### Chatbot construido: 7 herramientas de solo lectura
+
+`utils/geminiHerramientas.js` — `contarInscripciones`,
+`contarEstudiantesActivos`, `balanceMes`, `vouchersPendientes`,
+`buscarEstudiante`, `solicitudesEmpresariales`, `resultadosExamenes`.
+Todas de solo lectura a propósito — el chatbot nunca puede crear, editar
+ni borrar nada, así que el peor caso ante una mala interpretación es una
+respuesta rara, nunca un dato perdido.
+
+`controllers/chatbotController.js` orquesta el loop de function calling
+contra `generateContent` de Gemini (fetch nativo, sin SDK, mismo estilo
+que `notificaciones.js`). `routes/chatbotRoutes.js` — exclusivo `admin`.
+
+### Turbulencia real integrando con Gemini (Google itera muy rápido)
+
+Al probar por primera vez, el modelo usado inicialmente
+(`gemini-2.5-flash`) ya no estaba disponible para cuentas nuevas —
+Google lanzó la familia Gemini 3.x y recomendó migrar a
+`gemini-3.6-flash` directo en el mensaje de error 404. Cambio de una
+sola línea, la API `generateContent` en sí seguía funcionando igual
+("legacy" pero soportada).
+
+Segundo problema, más sutil: Gemini 3.x cambió el formato de function
+calling — el rol para devolver el resultado de una herramienta pasó de
+`"function"` a `"user"`, y cada `functionResponse` ahora exige el mismo
+`id` que trajo la `functionCall` original (antes no hacía falta). Sin
+esto, Gemini rechazaba la request con 400. Corregido tras dos rondas de
+prueba con `curl` real contra el endpoint desplegado en Render.
+
+Se agregaron reintentos automáticos (hasta 3, con espera creciente) ante
+errores 503/429 — confirmado con un caso real durante las pruebas
+("alta demanda", típico de la capa gratuita en picos de uso).
+
+Verificado funcionando de punta a punta con dos pruebas reales vía
+`curl`: una pregunta simple (una sola herramienta) y una que combinó dos
+herramientas en la misma respuesta (comparar inscripciones de una
+semana contra total de estudiantes activos) — ambas respondieron con
+cifras reales y correctas.
+
+### Resumen diario automatizado
+
+`utils/resumenDiario.js` calcula las cifras del día (nuevas
+inscripciones, pagos confirmados/rechazados, vouchers pendientes
+**acumulados**, nuevos registros, diplomas, solicitudes de Empresas,
+exámenes aprobados/reprobados) y arma el mensaje. `POST
+/api/interno/resumen-diario` — fuera de `protegerRuta` a propósito
+(quien llama es un robot), protegido por un secreto compartido
+(`CRON_SECRET`) en vez de JWT.
+
+`.github/workflows/resumen-diario.yml` — GitHub Action programado
+(`cron: "0 1 * * *"` UTC = 9:00 PM AST), con `workflow_dispatch` para
+poder dispararlo a mano y probar sin esperar. Verificado funcionando:
+el usuario corrió el workflow manualmente y confirmó que el correo/
+Telegram llegó bien.
+
+**Incidente real al hacer el primer push:** GitHub rechazó el push del
+archivo `.yml` — los Personal Access Tokens necesitan el permiso
+`workflow` explícito para tocar archivos dentro de
+`.github/workflows/`, algo que el token del usuario no tenía. Se
+resolvió subiendo ese archivo específico directo desde la interfaz web
+de GitHub (sin esa restricción) y sincronizando después con `git pull`
+— con un tropiezo adicional de `git` (archivo "untracked" bloqueando el
+merge) resuelto borrando la copia local duplicada antes de traer la de
+GitHub. Documentado en ARQUITECTURA_BACKEND.md por si se vuelve a tocar
+un archivo de Actions desde la terminal.
+
+### Frontend: pantalla del chat + tarjeta en el panel
+
+`app/(admin)/admin/asistente/page.tsx` — chat con burbujas, preguntas
+de ejemplo, auto-scroll. Construido replicando el estilo real de
+`admin/contabilidad/page.tsx` (mismas clases de Tailwind, mismo patrón
+de `useAuth()`) en vez de inventar un estilo nuevo. Tarjeta de acceso
+agregada a `panel/page.tsx`, grupo "Solo fundadora" (ícono `Bot`).
+
+Ajuste de texto pedido por el usuario: la primera versión repetía
+"nunca inventa datos" dos veces en la interfaz (mensaje de bienvenida +
+subtítulo) — sonaba más a advertencia que a descripción de producto.
+Se simplificó a solo decir qué puede consultar, sin la repetición. La
+instrucción real de "no inventes cifras" se queda donde importa: en el
+system prompt del backend, no en la UI.
+
 ## 28/08/2026 — SEO con dominio propio + corrección de estado real de contenido + fix de UI en aula virtual
 
 ### Contexto de arranque
@@ -773,16 +893,18 @@ admin con CRUD de noticias/testimonios/FAQ/contenido de página/contabilidad.
   ARQUITECTURA_FRONTEND.md — ver sección al inicio de este documento
   ("Corrección pendiente de documentación").
 
-### Ideas a futuro sin diseñar (interesan, pero sin resolver el disparador)
+### Ideas a futuro sin diseñar (el disparador ya no es el obstáculo)
 
 - Recordatorio por correo cuando el examen ya está disponible (pasaron las
   24h de espera).
 - Recordatorio por correo de voucher pendiente_verificacion/rechazado sin
   seguimiento después de varios días.
-- Ambas comparten la misma duda sin resolver: sin cron real (Render se
-  duerme en el tier free), falta decidir un disparador confiable — a
-  diferencia del recordatorio de balance mensual, nadie abre la app justo
-  cuando se cumple el plazo de una estudiante específica en particular.
+- **Actualización (04/09/2026):** el problema de "sin cron real" que
+  bloqueaba ambas ideas ya no aplica — el patrón GitHub Action
+  programado → endpoint protegido por secreto, construido para el
+  resumen diario (ver esa entrada arriba), se puede reutilizar tal cual.
+  Sigue pendiente solo diseñar el contenido y la frecuencia exacta de
+  cada recordatorio.
 
 ### Decisiones ya tomadas (cerradas, dejadas aquí solo como registro)
 
@@ -816,6 +938,13 @@ admin con CRUD de noticias/testimonios/FAQ/contenido de página/contabilidad.
 
 ### Ya resuelto (para no volver a preguntarlo)
 
+- Chatbot interno para la fundadora (Gemini 3.6 Flash + function
+  calling, 7 herramientas de solo lectura) y resumen diario automatizado
+  por correo/Telegram (GitHub Action a las 9pm) — ambos construidos y
+  verificados funcionando el 04/09/2026, ver esa entrada.
+- El formulario de Empresas ya persiste los leads en Mongo
+  (`SolicitudEmpresarial`) — resuelto el 04/09/2026 (antes solo se
+  notificaba, sin guardar nada).
 - SEO migrado al dominio propio (sitemap, robots.txt, metadata,
   propiedad nueva en Search Console verificada) — resuelto el
   28/08/2026, ver esa entrada. La propiedad vieja de Search Console

@@ -1,6 +1,6 @@
 # Arquitectura del Frontend — mav-rd-frontend
 
-> Refleja el estado REAL del código al 28/08/2026. Reemplaza la versión
+> Refleja el estado REAL del código al 04/09/2026. Reemplaza la versión
 > anterior de este mismo archivo. Para el historial de cómo se llegó aquí,
 > ver HISTORIAL_MODIFICACIONES.md.
 
@@ -95,7 +95,8 @@ mav-rd-frontend/
 │   │   ├── admin/page.tsx
 │   │   ├── admin/contabilidad/page.tsx
 │   │   ├── admin/contenido-pagina/page.tsx
-│   │   └── admin/notificaciones/page.tsx
+│   │   ├── admin/notificaciones/page.tsx
+│   │   └── admin/asistente/page.tsx      # NUEVO (04/09/2026) — chatbot con Gemini, solo admin
 │   ├── layout.tsx                        # Metadata SEO completa (title/description/OG/Twitter/JSON-LD Schema.org) — existía desde una sesión sin documentar (comentario interno fecha 13/08/2026), SITE_URL corregido al dominio propio el 28/08/2026
 │   └── globals.css
 ├── components/
@@ -328,6 +329,33 @@ resuelve por correo.
 `components/layout/Navbar.tsx` — se agregó `{ href: "/empresas", label:
 "Empresas" }` al array `enlaces` (alimenta tanto el menú de escritorio
 como el móvil desde un solo lugar).
+
+## NUEVO: Panel de admin — Asistente (chatbot) (04/09/2026)
+
+`app/(admin)/admin/asistente/page.tsx` — pantalla de chat simple para
+que la fundadora pregunte por cifras reales de la app (inscripciones,
+pagos, estudiantes, balance, solicitudes de Empresas, resultados de
+examen). Ver ARQUITECTURA_BACKEND.md para el detalle completo del
+backend (Gemini 3.6 Flash + function calling + 7 herramientas de solo
+lectura).
+
+- Burbujas de mensaje (azul a la derecha para la fundadora, gris a la
+  izquierda para el asistente), auto-scroll al último mensaje.
+- 4 preguntas de ejemplo como botones, visibles solo antes del primer
+  mensaje — para que no tenga que pensar qué escribir la primera vez.
+- Estados de error (fallo de red o del backend) se muestran en el
+  mismo color rosa de error que ya usa el resto del panel (mismo
+  patrón que `admin/contabilidad/page.tsx`).
+- Llama a `POST /api/chatbot/preguntar` con el token de `useAuth()`,
+  mismo patrón de autenticación que el resto del panel.
+- El texto de la interfaz se mantuvo deliberadamente breve — se quitó
+  una primera versión que repetía "nunca inventa datos" dos veces
+  (sonaba más a advertencia que a descripción de producto). La
+  garantía real de que no invente cifras vive en la instrucción de
+  sistema del backend, no hace falta repetirla en la UI.
+- Acceso: tarjeta nueva "Asistente" (ícono `Bot` de lucide-react) en
+  `panel/page.tsx`, grupo "Solo fundadora" — mismo array `MODULOS_ADMIN`
+  donde ya estaban Contabilidad, Contenido de página y Notificaciones.
 
 ## Testing antes de cada commit importante — sin cambios
 
