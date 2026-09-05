@@ -1,6 +1,6 @@
 # Arquitectura del Backend — mav-rd-backend
 
-> Refleja el estado REAL del código al 04/09/2026. Reemplaza la versión
+> Refleja el estado REAL del código al 05/09/2026. Reemplaza la versión
 > anterior de este mismo archivo. Para el historial de cómo se llegó aquí,
 > ver HISTORIAL_MODIFICACIONES.md.
 
@@ -111,6 +111,14 @@ solo expone `listarSesiones`, `obtenerSesionParaEstudiante` y
 `actualizarSesion` (PATCH). Ver DATABASE.md para el estado real de la
 colección.
 
+**ACTUALIZADO (05/09/2026):** `obtenerSesionParaEstudiante` ahora exige
+también haber completado `TestPsicologico` antes de devolver el
+contenido de **cualquier** sesión (no solo la 1) — ver la nueva sección
+"Test psicológico de perfil conductual" más abajo. Si falta, responde
+403 con `codigo: "TEST_PSICOLOGICO_PENDIENTE"` para que el frontend
+pueda distinguirlo de "sesión no desbloqueada" y redirigir a la
+estudiante al lugar correcto.
+
 **Sigue pendiente:** definir los 4 temas reales con la fundadora y
 renombrar las sesiones — el backend ya soporta el rename vía
 `PATCH /sesiones/:numero` (`titulo`), pero el panel de coordinadora
@@ -189,6 +197,63 @@ predecible que cualquier estudiante puede explotar sin siquiera leer la
 pregunta. Ver el detalle completo en DATABASE.md (sección `examenes`).
 Mismo plan que `ContenidoSesion`: borrar vía `curl` y recrear, esta vez
 con las opciones en orden aleatorio por pregunta antes de guardar.
+
+## NUEVO: Test psicológico de perfil conductual (05/09/2026)
+
+Pedido directo de la fundadora: entre el pago confirmado y el acceso al
+contenido, agregar un cuestionario de perfil psicológico/conductual —
+partió de un instrumento en papel ya existente y usado por la
+fundadora ("Test de Perfil Psicológico y Conductual del Conductor",
+54 preguntas de escala + 5 de reflexión abierta, agrupadas en 7
+categorías: autocontrol, estrés/emociones, percepción del riesgo,
+atención/concentración, actitud/responsabilidad, confianza,
+presión social).
+
+**Decisión de alcance, importante:** el documento en papel tiene una
+segunda mitad (indicadores del evaluador, perfil orientativo, y
+recomendación) que requiere criterio profesional humano — **se decidió
+explícitamente NO digitalizar esa parte**. Solo se digitalizaron las
+secciones que llena el propio estudiante. Tampoco se calcula ningún
+promedio ni puntaje por sección en el sistema — el instrumento mezcla
+preguntas en sentido positivo y negativo a propósito (diseño
+profesional estándar de este tipo de tests), así que un promedio
+simple daría un número que parece objetivo pero no lo es. La
+coordinadora ve las respuestas crudas, igual que si leyera el papel —
+la interpretación sigue siendo 100% humana.
+
+- **`models/TestPsicologico.js`** — `userId` único (una sola vez por
+  estudiante, igual que el diploma), `respuestas` (array de exactamente
+  54 números entre 1 y 5), `reflexiones` (array de 5 strings,
+  opcionales — son las preguntas más sensibles, incluyen preguntar por
+  incidentes/accidentes previos).
+- **`POST /api/test-psicologico/mi-respuesta`** (estudiante) — rechaza
+  con 409 si ya existe una respuesta previa para ese usuario.
+- **`GET /api/test-psicologico/mi-respuesta`** (estudiante) — solo
+  devuelve `{ completado: boolean }`, nunca las respuestas — no hay
+  pantalla de "ver mis respuestas anteriores" para la estudiante.
+- **`GET /api/test-psicologico`** y **`GET /api/test-psicologico/:userId`**
+  (coordinadora/admin — mismo nivel de acceso que Estudiantes, no
+  exclusivo de admin) — lista y detalle completo para revisión humana.
+- **Gate real**: `sesionController.js#obtenerSesionParaEstudiante`
+  verifica `TestPsicologico.exists({ userId })` antes de devolver
+  contenido de cualquier sesión — ver actualización en la sección de
+  arriba.
+- **Consentimiento**: el frontend muestra el mismo disclaimer del
+  documento original ("no constituye diagnóstico psicológico...") con
+  checkbox obligatorio antes de mostrar las preguntas — no se
+  implementó a nivel de backend (es solo UI), así que técnicamente el
+  backend no puede verificar que se mostró, pero no hay forma de
+  llegar al formulario sin pasar por esa pantalla en el flujo normal.
+
+**Pendiente real, no resuelto por Claude:** este cuestionario captura
+información psicológica/conductual que probablemente califica como
+"dato sensible" bajo la Ley 172-13 de Protección de Datos de República
+Dominicana. Se agregó consentimiento explícito y se restringió el
+acceso a coordinadora/admin, pero la fundadora debe confirmar con
+asesoría legal si hace falta algo más (política de privacidad
+específica, tiempo de retención de datos, etc.) antes de usarlo con
+estudiantes reales — no es una recomendación legal, solo una alerta de
+que el tema existe.
 
 ## Diplomas (/api/diplomas)
 
@@ -359,6 +424,11 @@ scope `workflow` incluido evita este paso extra.
 
 ## Pendiente real (backend)
 
+- **Confirmar cumplimiento legal del test psicológico (Ley 172-13)**
+  antes de usarlo con estudiantes reales — ver detalle en la sección
+  "Test psicológico de perfil conductual" de arriba. Requiere que la
+  fundadora consulte con asesoría legal, no es algo que Claude pueda
+  resolver por su cuenta.
 - **ALTA PRIORIDAD (28/08/2026): borrar y recrear `ContenidoSesion` +
   `Examen` desde cero.** Ambos se cargaron en una sesión sin documentar,
   pero con defectos serios — PDFs con codificación rota y exámenes con

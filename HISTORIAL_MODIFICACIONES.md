@@ -4,6 +4,95 @@
 > ARQUITECTURA_BACKEND.md, ARQUITECTURA_FRONTEND.md y DATABASE.md, este
 > archivo es solo un changelog, no la fuente de verdad de cómo funciona nada.
 
+## 05/09/2026 — Test psicológico de perfil conductual, entre el pago y el acceso al contenido
+
+### Contexto de arranque
+
+La fundadora, en conversación directa con el usuario (fuera de esta
+herramienta), pidió agregar una prueba psicológica después del pago
+confirmado y antes del acceso al contenido — quería capturar datos de
+experiencia previa conduciendo y perfil conductual de cada estudiante.
+Se entregó como PDF un instrumento en papel ya diseñado y en uso:
+"Test de Perfil Psicológico y Conductual del Conductor" (Muvo RD
+Vial), con disclaimer legal propio ("no constituye diagnóstico
+psicológico... si corresponde, derivación a un profesional").
+
+### Análisis antes de construir
+
+Se leyó el PDF completo antes de proponer nada. Hallazgo importante:
+el documento tiene dos mitades con roles distintos —
+
+- **Secciones A-H**: 54 preguntas de escala (Nunca=1...Siempre=5) en 7
+  categorías (autocontrol, estrés/emociones, percepción del riesgo,
+  atención/concentración, actitud/responsabilidad, confianza, presión
+  social) + 5 preguntas de reflexión abierta. Esto lo llena el
+  estudiante.
+- **Secciones I/J/K**: indicadores de atención del evaluador, perfil
+  orientativo por área, y recomendación (incluye la opción "se
+  recomienda evaluación psicológica profesional externa"). Esto lo
+  llena un evaluador humano con criterio profesional — no es algo que
+  un formulario web autoadministrado pueda generar sin perder el
+  sentido del instrumento.
+
+Se planteó esta disyuntiva al usuario antes de construir, junto con dos
+preguntas más (qué tan bloqueante debe ser, y si debe avisar
+automáticamente). Decisiones del usuario:
+
+1. **Solo digitalizar A-H** — I/J/K se queda en papel o no se hace por
+   ahora.
+2. **Obligatorio** — no se puede entrar a la Sesión 1 (ni a ninguna
+   otra) sin completarlo.
+3. **Sin aviso automático** — la coordinadora lo revisa cuando quiera
+   desde el panel, no hace falta notificación push.
+
+### Decisión de diseño propia, no pedida explícitamente pero justificada
+
+Se decidió **no calcular ningún promedio ni puntaje por sección** en el
+sistema. El instrumento mezcla a propósito preguntas en sentido
+positivo y negativo (técnica de diseño profesional estándar en este
+tipo de tests, para detectar respuestas inconsistentes) — promediar
+los números crudos sin ese criterio daría una cifra que aparenta ser
+objetiva pero no lo es, reintroduciendo por la puerta trasera
+exactamente la interpretación profesional que se decidió dejar fuera
+(punto 1 de arriba). La coordinadora ve las respuestas tal cual las
+llenó la estudiante, sin ninguna cifra resumen inventada.
+
+También se agregó, sin que se pidiera explícitamente pero como buena
+práctica dado que es información sensible:
+
+- Pantalla de consentimiento obligatoria antes de mostrar las
+  preguntas, con el mismo texto de advertencia del documento original.
+- Acceso a las respuestas restringido a coordinadora/admin — ninguna
+  estudiante puede ver las de otra, ni las propias después de enviarlas.
+- Aviso explícito al usuario (no resuelto por Claude, señalado como
+  pendiente real) de que este tipo de dato probablemente califica como
+  "sensible" bajo la Ley 172-13 de Protección de Datos de RD, y que
+  conviene confirmarlo con asesoría legal antes de usarlo con
+  estudiantes reales.
+
+### Construido
+
+Backend: `models/TestPsicologico.js` (userId único, 54 respuestas
+validadas 1-5, 5 reflexiones opcionales), `controllers/testPsicologicoController.js`
+(enviar una vez con 409 si se repite, estado propio sin exponer
+respuestas, listado y detalle para coordinadora/admin),
+`routes/testPsicologicoRoutes.js`, y el gate real en
+`sesionController.js#obtenerSesionParaEstudiante` (403 con
+`codigo: "TEST_PSICOLOGICO_PENDIENTE"` si falta).
+
+Frontend: `lib/bancoPreguntasTest.ts` (las 54+5 preguntas transcritas
+del PDF, única fuente de verdad para el texto), `app/test-psicologico/page.tsx`
+(consentimiento → formulario → envío único), `app/dashboard/page.tsx`
+actualizado (pantalla de aviso si falta completarlo, en vez de las
+tarjetas de sesión), `app/(coordinadora)/panel/test-psicologico/page.tsx`
+(lista + detalle expandible, sin ningún puntaje calculado), y tarjeta
+de acceso nueva en `panel/page.tsx` (grupo "Gestión del curso",
+visible para coordinadora y admin).
+
+Estado al cierre: construido y entregado; el usuario confirmó que
+"quedó todo muy bien" tras probarlo. Pendiente real: la confirmación
+legal sobre datos sensibles (Ley 172-13), señalada arriba.
+
 ## 04/09/2026 — Automatización para la fundadora: chatbot con Gemini + resumen diario + persistencia de Empresas
 
 ### Contexto de arranque
@@ -861,6 +950,14 @@ admin con CRUD de noticias/testimonios/FAQ/contenido de página/contabilidad.
 
 ## Pendientes abiertos (reemplaza cualquier lista anterior de esta sección)
 
+### Pendiente de confirmación legal (no resuelto por Claude)
+
+- **Test psicológico de perfil conductual (ver entrada 05/09/2026)**:
+  probablemente califica como "dato sensible" bajo la Ley 172-13 de
+  Protección de Datos de RD. La fundadora debe confirmarlo con
+  asesoría legal antes de usarlo con estudiantes reales — no es algo
+  que se pueda resolver solo con código.
+
 ### ALTA PRIORIDAD (28/08/2026) — recrear contenido real de las 4 sesiones
 
 - **`ContenidoSesion` (PDFs) y `Examen` deben borrarse y recrearse desde
@@ -937,6 +1034,11 @@ admin con CRUD de noticias/testimonios/FAQ/contenido de página/contabilidad.
   actualizar la tabla de colores en ARQUITECTURA_FRONTEND.md.
 
 ### Ya resuelto (para no volver a preguntarlo)
+
+- Test psicológico de perfil conductual (54 preguntas + 5 reflexiones,
+  gate obligatorio antes del contenido, sin puntaje calculado) —
+  construido y confirmado funcionando el 05/09/2026, ver esa entrada.
+  Pendiente real restante: confirmación legal (ver arriba).
 
 - Chatbot interno para la fundadora (Gemini 3.6 Flash + function
   calling, 7 herramientas de solo lectura) y resumen diario automatizado

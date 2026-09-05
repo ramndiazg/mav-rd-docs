@@ -1,6 +1,6 @@
 # Arquitectura del Frontend — mav-rd-frontend
 
-> Refleja el estado REAL del código al 04/09/2026. Reemplaza la versión
+> Refleja el estado REAL del código al 05/09/2026. Reemplaza la versión
 > anterior de este mismo archivo. Para el historial de cómo se llegó aquí,
 > ver HISTORIAL_MODIFICACIONES.md.
 
@@ -72,8 +72,9 @@ mav-rd-frontend/
 │   ├── olvide-password/page.tsx
 │   ├── restablecer-password/page.tsx
 │   ├── verificar-email/page.tsx
-│   ├── dashboard/page.tsx                # SESIONES = [1,2,3,4]
+│   ├── dashboard/page.tsx                # SESIONES = [1,2,3,4] + gate del test psicológico antes de mostrarlas (05/09/2026)
 │   ├── inscripcion/page.tsx              # lee precios de /api/configuracion
+│   ├── test-psicologico/page.tsx         # NUEVO (05/09/2026) — consentimiento + cuestionario de 54+5 preguntas, una sola vez
 │   ├── aula-virtual/[sesion]/page.tsx    # PDF con enlace firmado (13/08) + UI de contenido (pdf/enlace/video/texto) unificada y botón "Marcar como visto" centrado para los 4 tipos (28/08/2026)
 │   ├── examen/[intentoId]/page.tsx
 │   ├── (estudiante)/
@@ -87,6 +88,7 @@ mav-rd-frontend/
 │   │   ├── panel/aula-virtual/page.tsx   # subida de PDF real como archivo (13/08/2026, ver detalle abajo)
 │   │   ├── panel/examenes/page.tsx
 │   │   ├── panel/diplomas/page.tsx
+│   │   ├── panel/test-psicologico/page.tsx # NUEVO (05/09/2026) — lista + detalle de respuestas, sin puntaje calculado
 │   │   ├── panel/noticias/page.tsx
 │   │   ├── panel/testimonios/page.tsx
 │   │   └── panel/faq/page.tsx
@@ -96,9 +98,11 @@ mav-rd-frontend/
 │   │   ├── admin/contabilidad/page.tsx
 │   │   ├── admin/contenido-pagina/page.tsx
 │   │   ├── admin/notificaciones/page.tsx
-│   │   └── admin/asistente/page.tsx      # NUEVO (04/09/2026) — chatbot con Gemini, solo admin
+│   │   └── admin/asistente/page.tsx      # chatbot con Gemini, solo admin (04/09/2026)
 │   ├── layout.tsx                        # Metadata SEO completa (title/description/OG/Twitter/JSON-LD Schema.org) — existía desde una sesión sin documentar (comentario interno fecha 13/08/2026), SITE_URL corregido al dominio propio el 28/08/2026
 │   └── globals.css
+├── lib/
+│   └── bancoPreguntasTest.ts             # NUEVO (05/09/2026) — 54 preguntas de escala + 5 de reflexión, compartidas entre el formulario del estudiante y la vista de la coordinadora
 ├── components/
 │   ├── ui/Paginacion.tsx
 │   ├── layout/Navbar.tsx, Footer.tsx     # Navbar: link a "Empresas" agregado (13/08/2026)
@@ -356,6 +360,47 @@ lectura).
 - Acceso: tarjeta nueva "Asistente" (ícono `Bot` de lucide-react) en
   `panel/page.tsx`, grupo "Solo fundadora" — mismo array `MODULOS_ADMIN`
   donde ya estaban Contabilidad, Contenido de página y Notificaciones.
+
+## NUEVO: Test psicológico de perfil conductual (05/09/2026)
+
+Pedido directo de la fundadora: entre el pago confirmado y el acceso al
+contenido, un cuestionario de perfil psicológico/conductual — basado en
+un instrumento en papel que ya usaba. Ver ARQUITECTURA_BACKEND.md para
+el detalle completo de la decisión de alcance (solo se digitalizaron
+las secciones que llena el estudiante, no las que requieren un
+evaluador humano; tampoco se calcula ningún puntaje).
+
+- **`app/test-psicologico/page.tsx`** — tres estados: (1) si ya lo
+  completó, mensaje de agradecimiento y botón a "Ir a mi panel", sin
+  poder volver a editarlo; (2) si no, pantalla de consentimiento con el
+  mismo disclaimer del documento original y un checkbox obligatorio;
+  (3) el formulario en sí — 7 secciones (A-G) con las 54 preguntas de
+  escala (botones Nunca/Casi nunca/A veces/Casi siempre/Siempre) más la
+  sección H con 5 preguntas de reflexión abierta (opcionales). Envío
+  único — el backend rechaza un segundo intento con 409.
+- **`app/dashboard/page.tsx`** — ahora también consulta
+  `GET /test-psicologico/mi-respuesta` en paralelo con el progreso.
+  Si el pago está confirmado pero el test no, se muestra una pantalla
+  de aviso ("Antes de empezar, completa tu cuestionario de perfil") en
+  vez de las tarjetas de sesión — la lógica real de bloqueo vive en el
+  backend (`sesionController.js`), esto es solo para que la estudiante
+  no llegue a un error 403 confuso al hacer clic en una sesión.
+- **`app/(coordinadora)/panel/test-psicologico/page.tsx`** — lista de
+  quiénes lo han completado (nombre, cédula, fecha), con acceso de
+  coordinadora y admin por igual. Cada fila se expande para mostrar las
+  54 respuestas (pregunta + etiqueta de la escala elegida, no el número
+  crudo) organizadas por sección, más las 5 reflexiones. **Sin ningún
+  promedio ni indicador calculado** — deliberado, ver ARQUITECTURA_BACKEND.md.
+- **`lib/bancoPreguntasTest.ts`** — única fuente de verdad para el
+  texto de las 54+5 preguntas, usado tanto por el formulario del
+  estudiante como por la vista de detalle de la coordinadora. El índice
+  de cada pregunta en este archivo es exactamente el índice esperado en
+  el array `respuestas` que guarda el backend — si se edita el texto de
+  una pregunta, no pasa nada; si se reordena o se agrega/quita una
+  pregunta, hay que migrar los datos ya guardados o el índice deja de
+  coincidir.
+- Tarjeta de acceso nueva en `panel/page.tsx`, grupo "Gestión del
+  curso" (no "Solo fundadora" — la coordinadora también tiene acceso).
 
 ## Testing antes de cada commit importante — sin cambios
 

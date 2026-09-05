@@ -4,7 +4,7 @@
 > mujeresalvolante.rd4sofa.mongodb.net (versión real confirmada: 8.0.29).
 > Mongoose como ODM. Todas las colecciones usan \_id (ObjectId) automático
 > y createdAt/updatedAt (timestamps automáticos de Mongoose), salvo que se
-> indique lo contrario. Refleja el estado real al 04/09/2026.
+> indique lo contrario. Refleja el estado real al 05/09/2026.
 
 ---
 
@@ -206,6 +206,34 @@ registro. Ahora se guarda primero y luego se notifica, resolviendo ese
 pendiente. También es la colección que consulta la herramienta
 `solicitudesEmpresariales` del chatbot nuevo (ver ARQUITECTURA_BACKEND.md).
 
+## 18. testsPsicologicos — NUEVA (05/09/2026)
+
+```js
+{
+  _id: ObjectId,
+  userId: ObjectId,       // ref: users, único — una sola vez por estudiante
+  respuestas: [Number],   // exactamente 54 elementos, cada uno 1-5
+  reflexiones: [String],  // exactamente 5 elementos, pueden venir vacíos
+  createdAt: Date, updatedAt: Date
+}
+```
+
+Digitaliza solo las secciones A-H de un test en papel más grande — las
+secciones I/J/K (indicadores/recomendación del evaluador) se dejaron
+fuera a propósito, requieren criterio profesional humano. **No se
+guarda ningún promedio ni puntaje calculado** — el instrumento mezcla
+preguntas en sentido positivo y negativo a propósito, así que un
+promedio simple sería engañoso. Gate real: no se puede acceder a
+ninguna sesión del aula virtual sin tener un documento en esta
+colección (ver `sesionController.js` en ARQUITECTURA_BACKEND.md).
+Acceso de lectura restringido a coordinadora/admin — ninguna estudiante
+puede ver las respuestas de otra, ni las propias después de enviarlas.
+
+**Nota de cumplimiento, sin resolver:** esta colección probablemente
+contiene "datos sensibles" bajo la Ley 172-13 de Protección de Datos de
+RD — pendiente que la fundadora lo confirme con asesoría legal antes de
+usarlo con estudiantes reales (ver ARQUITECTURA_BACKEND.md).
+
 ---
 
 ## Índices recomendados — sin cambios
@@ -222,6 +250,7 @@ pendiente. También es la colección que consulta la herramienta
 - balancesMensuales: compuesto único { mes, anio }.
 - solicitudesEmpresariales: { createdAt: -1 } (ya definido en el
   esquema con `.index()`).
+- testsPsicologicos: único en userId (ya definido en el esquema).
 
 ## Notas de diseño
 
