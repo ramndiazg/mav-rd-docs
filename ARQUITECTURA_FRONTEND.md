@@ -1,6 +1,6 @@
 # Arquitectura del Frontend — mav-rd-frontend
 
-> Refleja el estado REAL del código al 05/09/2026. Reemplaza la versión
+> Refleja el estado REAL del código al 06/09/2026. Reemplaza la versión
 > anterior de este mismo archivo. Para el historial de cómo se llegó aquí,
 > ver HISTORIAL_MODIFICACIONES.md.
 
@@ -53,78 +53,80 @@ la nueva sección de precios del home (ver abajo).
 
 ## Estructura de carpetas (real)
 
-```
 mav-rd-frontend/
 ├── app/
-│   ├── page.tsx                          # Inicio — Planes/precios (13/08) + banner Empresas (13/08) + promo libro de la fundadora, colores brand-yellow/brand-mamey nuevos (sesión sin documentar, confirmado 28/08/2026)
-│   ├── sitemap.ts                        # NUEVO (documentado 28/08/2026, existía desde antes sin registrar) — SITE_URL corregido al dominio propio
-│   ├── robots.ts                         # NUEVO (documentado 28/08/2026, existía desde antes sin registrar) — SITE_URL corregido, ya no bloquea /inscripcion por error
-│   ├── empresas/page.tsx                 # NUEVO (13/08/2026) — programa empresarial, informativo + formulario
-│   ├── acerca-de-nosotros/page.tsx
-│   ├── kit-preparacion/page.tsx
-│   ├── noticias/page.tsx
-│   ├── noticias/[id]/page.tsx
-│   ├── testimonios/page.tsx              # sin revisar — lenguaje de género pendiente
-│   ├── faq/page.tsx                      # confirmado sin cambios necesarios
-│   ├── verificar-diploma/page.tsx
-│   ├── login/page.tsx
-│   ├── registro/page.tsx                 # sin revisar — lenguaje de género pendiente
-│   ├── olvide-password/page.tsx
-│   ├── restablecer-password/page.tsx
-│   ├── verificar-email/page.tsx
-│   ├── dashboard/page.tsx                # SESIONES = [1,2,3,4] + gate del test psicológico antes de mostrarlas (05/09/2026)
-│   ├── inscripcion/page.tsx              # lee precios de /api/configuracion
-│   ├── test-psicologico/page.tsx         # NUEVO (05/09/2026) — consentimiento + cuestionario de 54+5 preguntas, una sola vez
-│   ├── aula-virtual/[sesion]/page.tsx    # PDF con enlace firmado (13/08) + UI de contenido (pdf/enlace/video/texto) unificada y botón "Marcar como visto" centrado para los 4 tipos (28/08/2026)
-│   ├── examen/[intentoId]/page.tsx
-│   ├── (estudiante)/
-│   │   └── diploma/page.tsx
-│   ├── perfil/cambiar-password/page.tsx
-│   ├── (coordinadora)/
-│   │   ├── panel/layout.tsx
-│   │   ├── panel/page.tsx
-│   │   ├── panel/pagos/page.tsx
-│   │   ├── panel/estudiantes/page.tsx
-│   │   ├── panel/aula-virtual/page.tsx   # subida de PDF real como archivo (13/08/2026, ver detalle abajo)
-│   │   ├── panel/examenes/page.tsx
-│   │   ├── panel/diplomas/page.tsx
-│   │   ├── panel/test-psicologico/page.tsx # NUEVO (05/09/2026) — lista + detalle de respuestas, sin puntaje calculado
-│   │   ├── panel/noticias/page.tsx
-│   │   ├── panel/testimonios/page.tsx
-│   │   └── panel/faq/page.tsx
-│   ├── (admin)/
-│   │   ├── admin/layout.tsx
-│   │   ├── admin/page.tsx
-│   │   ├── admin/contabilidad/page.tsx
-│   │   ├── admin/contenido-pagina/page.tsx
-│   │   ├── admin/notificaciones/page.tsx
-│   │   └── admin/asistente/page.tsx      # chatbot con Gemini, solo admin (04/09/2026)
-│   ├── layout.tsx                        # Metadata SEO completa (title/description/OG/Twitter/JSON-LD Schema.org) — existía desde una sesión sin documentar (comentario interno fecha 13/08/2026), SITE_URL corregido al dominio propio el 28/08/2026
-│   └── globals.css
+│ ├── page.tsx # Inicio — Planes/precios (13/08) + banner Empresas (13/08) + promo libro de la fundadora, colores brand-yellow/brand-mamey nuevos (sesión sin documentar, confirmado 28/08/2026)
+│ ├── sitemap.ts # NUEVO (documentado 28/08/2026, existía desde antes sin registrar) — SITE_URL corregido al dominio propio
+│ ├── robots.ts # NUEVO (documentado 28/08/2026, existía desde antes sin registrar) — SITE_URL corregido, ya no bloquea /inscripcion por error
+│ ├── empresas/page.tsx # NUEVO (13/08/2026) — programa empresarial, informativo + formulario
+│ ├── acerca-de-nosotros/page.tsx
+│ ├── kit-preparacion/page.tsx
+│ ├── noticias/page.tsx
+│ ├── noticias/[id]/page.tsx
+│ ├── testimonios/page.tsx # sin revisar — lenguaje de género pendiente
+│ ├── faq/page.tsx # confirmado sin cambios necesarios
+│ ├── verificar-diploma/page.tsx
+│ ├── login/page.tsx # redirige por rol: coordinadora/admin -> /panel/pagos, conductor -> /practica, estudiante -> /dashboard (05/09/2026)
+│ ├── registro/page.tsx # sin revisar — lenguaje de género pendiente
+│ ├── olvide-password/page.tsx
+│ ├── restablecer-password/page.tsx
+│ ├── verificar-email/page.tsx
+│ ├── dashboard/page.tsx # SESIONES = [1,2,3,4] + gate del test psicológico + pantalla de "lista para práctica"/instructor aprobado tras completar teoría (05/09/2026)
+│ ├── inscripcion/page.tsx # lee precios de /api/configuracion
+│ ├── test-psicologico/page.tsx # NUEVO (05/09/2026) — consentimiento + cuestionario de 54+5 preguntas, una sola vez
+│ ├── aula-virtual/[sesion]/page.tsx # PDF con enlace firmado (13/08) + UI de contenido (pdf/enlace/video/texto) unificada y botón "Marcar como visto" centrado para los 4 tipos (28/08/2026)
+│ ├── examen/[intentoId]/page.tsx
+│ ├── (estudiante)/
+│ │ └── diploma/page.tsx # tarjeta compartible: bug de dominio corregido (05/09/2026, ver sección abajo)
+│ ├── perfil/cambiar-password/page.tsx
+│ ├── (coordinadora)/
+│ │ ├── panel/layout.tsx
+│ │ ├── panel/page.tsx # MODULOS_ADMIN: 2 tarjetas nuevas, Choferes y Notif. de práctica (05/09/2026)
+│ │ ├── panel/pagos/page.tsx
+│ │ ├── panel/estudiantes/page.tsx
+│ │ ├── panel/aula-virtual/page.tsx # subida de PDF real como archivo (13/08/2026, ver detalle abajo)
+│ │ ├── panel/examenes/page.tsx
+│ │ ├── panel/diplomas/page.tsx
+│ │ ├── panel/test-psicologico/page.tsx # NUEVO (05/09/2026) — lista + detalle de respuestas, sin puntaje calculado
+│ │ ├── panel/noticias/page.tsx
+│ │ ├── panel/testimonios/page.tsx
+│ │ └── panel/faq/page.tsx
+│ ├── (admin)/
+│ │ ├── admin/layout.tsx
+│ │ ├── admin/page.tsx
+│ │ ├── admin/contabilidad/page.tsx
+│ │ ├── admin/contenido-pagina/page.tsx
+│ │ ├── admin/notificaciones/page.tsx
+│ │ ├── admin/choferes/page.tsx # NUEVO (05/09/2026) — CRUD de instructores de práctica
+│ │ ├── admin/notificaciones-practica/page.tsx # NUEVO (05/09/2026) — destinatarios aparte, solo avisos de práctica
+│ │ └── admin/asistente/page.tsx # chatbot con Gemini, solo admin (04/09/2026)
+│ ├── (conductor)/
+│ │ └── practica/layout.tsx, page.tsx # NUEVO (05/09/2026) — dashboard del chofer: aprobar estudiantes listas para práctica
+│ ├── layout.tsx # Metadata SEO completa (title/description/OG/Twitter/JSON-LD Schema.org) — existía desde una sesión sin documentar (comentario interno fecha 13/08/2026), SITE_URL corregido al dominio propio el 28/08/2026
+│ └── globals.css
 ├── lib/
-│   └── bancoPreguntasTest.ts             # NUEVO (05/09/2026) — 54 preguntas de escala + 5 de reflexión, compartidas entre el formulario del estudiante y la vista de la coordinadora
+│ └── bancoPreguntasTest.ts # NUEVO (05/09/2026) — 54 preguntas de escala + 5 de reflexión, compartidas entre el formulario del estudiante y la vista de la coordinadora
 ├── components/
-│   ├── ui/Paginacion.tsx
-│   ├── layout/Navbar.tsx, Footer.tsx     # Navbar: link a "Empresas" agregado (13/08/2026)
-│   ├── noticias/NoticiaAcciones.tsx, CompartirBotones.tsx
-│   ├── auth/RutaProtegida.tsx
-│   ├── dashboard/ProgresoCarretera.tsx
-│   └── contabilidad/
-├── contexts/AuthContext.tsx
+│ ├── ui/Paginacion.tsx
+│ ├── layout/Navbar.tsx, Footer.tsx # Navbar: link a "Empresas" agregado (13/08/2026)
+│ ├── noticias/NoticiaAcciones.tsx, CompartirBotones.tsx
+│ ├── auth/RutaProtegida.tsx # tipo Rol ahora incluye "conductor" (05/09/2026)
+│ ├── dashboard/ProgresoCarretera.tsx # la parada "Práctica" ahora refleja practicaAprobada (05/09/2026)
+│ └── contabilidad/
+├── contexts/AuthContext.tsx # tipo Rol ahora incluye "conductor" (05/09/2026)
 ├── public/
-│   ├── logo-mav-rd.png
-│   ├── diploma-compartir.jpg
-│   ├── og-image.png
-│   ├── libro-maria-diaz.jpg               # NUEVO — portada del libro de la fundadora, promocionado en el home (sesión sin documentar, confirmado 28/08/2026)
-│   └── inscripcion/
-│       ├── teoria-1.jpg, teoria-2.jpg, teoria-3.jpg
-│       ├── practica-vip.jpg
-│       └── practica-normal-ilustracion.jpg
+│ ├── logo-mav-rd.png
+│ ├── diploma-compartir.jpg
+│ ├── og-image.png
+│ ├── libro-maria-diaz.jpg # NUEVO — portada del libro de la fundadora, promocionado en el home (sesión sin documentar, confirmado 28/08/2026)
+│ └── inscripcion/
+│ ├── teoria-1.jpg, teoria-2.jpg, teoria-3.jpg
+│ ├── practica-vip.jpg
+│ └── practica-normal-ilustracion.jpg
 ├── app/favicon.ico
 ├── tailwind.config.ts
 ├── .env.local.example
 └── package.json
-```
 
 ## Tokens de color (Tailwind) — 2 tokens nuevos sin confirmar (28/08/2026)
 
@@ -158,15 +160,20 @@ del panel de coordinadora y aula virtual. Ambas funcionan hoy en
 producción (Tailwind v4 debe estar generando ambos alias), pero es
 inconsistente. Unificar en algún momento, sin urgencia.
 
-## Autenticación — sin cambios
+## Autenticación — 4to rol agregado (05/09/2026)
+
+`AuthContext.tsx` y `RutaProtegida.tsx`: el tipo `Rol` pasó de 3 a 4
+valores (`"estudiante" | "coordinadora" | "admin" | "conductor"`).
+`login/page.tsx` redirige a `/practica` si `rol === "conductor"`, antes
+de los casos ya existentes de coordinadora/admin y estudiante.
 
 ## Sesiones — 4, ya recreadas en la base de datos (13/08/2026)
 
-`dashboard/page.tsx`: `const SESIONES = [1, 2, 3, 4]`, sin cambios de
-código esta sesión. La nota de la versión anterior de este documento
-("el dashboard va a marcar Sesión 1 disponible pero al entrar muestra
-'Sesión no encontrada'") **ya no aplica** — `scripts/crearSesionesIniciales.js`
-se ejecutó y las 4 sesiones existen en Atlas (ver DATABASE.md).
+`dashboard/page.tsx`: `const SESIONES = [1, 2, 3, 4]`. La nota de la
+versión anterior de este documento ("el dashboard va a marcar Sesión 1
+disponible pero al entrar muestra 'Sesión no encontrada'") **ya no
+aplica** — `scripts/crearSesionesIniciales.js` se ejecutó y las 4
+sesiones existen en Atlas (ver DATABASE.md).
 
 El panel de coordinadora (`panel/aula-virtual/page.tsx`,
 `panel/examenes/page.tsx`) ya puede listar y usar esas 4 sesiones con
@@ -174,9 +181,29 @@ normalidad. Sigue sin haber forma de **crear** sesiones nuevas desde el
 panel (ver ARQUITECTURA_BACKEND.md) ni de **renombrarlas** — eso sigue
 pendiente de un formulario dedicado.
 
-## Barra de progreso ilustrada — sin cambios en esta sesión
+## Barra de progreso ilustrada — extendida a la etapa de práctica (05/09/2026)
 
-## Diploma compartible en redes sociales — sin cambios en esta sesión
+`components/dashboard/ProgresoCarretera.tsx` — la parada "Práctica" ya
+existía visualmente, pero antes siempre se quedaba neutra ("no se
+rastrea en la app"). Ahora recibe `progreso.practicaAprobada` y, cuando
+es `true`, cambia de color y muestra el mismo check verde que un libro
+de sesión aprobada. El mensaje motivacional distingue "contacta a tu
+instructor para la práctica en carretera" (teoría completa, práctica
+sin aprobar) de "tu instructor aprobó tu práctica — tu diploma está en
+camino" (ambas cosas completas, diploma aún no generado).
+
+## Diploma compartible en redes sociales — bug de dominio corregido (05/09/2026)
+
+`app/(estudiante)/diploma/page.tsx` generaba la tarjeta con Canvas
+(formato historia 9:16) usando `URL_INICIO` para el QR, pero el texto
+visible debajo del QR estaba escrito **literal y aparte**
+(`"muvo-rd.vercel.app"`) — al migrar al dominio propio (ver
+"Infraestructura y despliegue"), el QR se corrigió pero el texto se
+quedó apuntando al dominio viejo. Corregido: `URL_INICIO` ahora es
+`https://www.muvordvial.com`, y el texto del `fillText` sale de esa
+misma constante (`DOMINIO_VISIBLE = URL_INICIO.replace(/^https?:\/\//, "")`)
+en vez de estar escrito aparte — QR y texto ya no pueden
+desincronizarse otra vez.
 
 ## Contenido de estudio en PDF — subida real de archivo (13/08/2026)
 
@@ -211,7 +238,7 @@ incluido en este bloque de trabajo.
 Bug real detectado por el usuario en `aula-virtual/[sesion]/page.tsx`:
 para contenido tipo `video` y `texto`, el botón "Marcar como visto"
 caía en su propia línea de forma natural (el contenido vivía dentro de
-un `<div>` de bloque). Para `pdf` y `enlace`, el link era un `<a
+un `<div>` de bloque). Para `pdf` y `enlace`, el link era un `
 className="inline-block">` — al ser `inline-block`, el navegador lo
 ponía en la misma línea que el botón siguiente si había espacio,
 quedando visualmente pegados y desordenados.
@@ -402,6 +429,44 @@ evaluador humano; tampoco se calcula ningún puntaje).
 - Tarjeta de acceso nueva en `panel/page.tsx`, grupo "Gestión del
   curso" (no "Solo fundadora" — la coordinadora también tiene acceso).
 
+## NUEVO: Seguimiento de práctica de manejo (05/09/2026)
+
+Ver ARQUITECTURA_BACKEND.md para el detalle completo del backend
+(Instructor, DestinatarioPractica, gate del diploma). Aquí, lo nuevo en
+el frontend:
+
+- **`app/dashboard/page.tsx`** — cuando `progreso.cursoCompletado` es
+  `true`, ya no se muestran las tarjetas de sesión. En su lugar: si
+  `!practicaAprobada`, una pantalla de felicitación con la lista de
+  choferes activos (nombre, teléfono, correo, horarios, vía
+  `GET /instructores/activos`) para que la estudiante los contacte
+  directamente — sin asignación automática. Si `practicaAprobada` pero
+  el diploma aún no existe, un mensaje de "tu diploma está en camino".
+  Si el diploma ya existe, el botón "Ver mi diploma" de siempre.
+- **`components/dashboard/ProgresoCarretera.tsx`** — la parada "Práctica"
+  ahora cambia de color y muestra el check cuando `practicaAprobada` es
+  `true`, igual que un libro más de sesión aprobada. El mensaje
+  motivacional distingue "contacta a tu instructor" de "tu instructor
+  ya te aprobó, tu diploma está en camino".
+- **`app/(admin)/admin/choferes/page.tsx`** (NUEVO) — CRUD de choferes:
+  formulario de creación (llama a `POST /usuarios/conductor`, crea el
+  `User` y el `Instructor` en un paso) y edición de horarios/activo por
+  chofer existente (`PATCH /instructores/:id`).
+- **`app/(admin)/admin/notificaciones-practica/page.tsx`** (NUEVO) —
+  copia exacta del patrón de `admin/notificaciones/page.tsx`, apuntando
+  a `/destinatarios-practica` — lista separada de quién recibe avisos
+  cuando una estudiante termina la teoría.
+- **`app/(conductor)/practica/layout.tsx` + `page.tsx`** (NUEVO) —
+  dashboard del chofer: lista de estudiantes con `cursoCompletado` pero
+  sin `practicaAprobada`, con botón "Aprobar práctica" por cada una.
+- **`app/(coordinadora)/panel/page.tsx`** — dos tarjetas nuevas en
+  `MODULOS_ADMIN` ("Solo fundadora"): "Choferes" (ícono `Car`) y
+  "Notif. de práctica" (ícono `Send`).
+
+Probado de punta a punta en esta sesión: crear chofer → login como
+chofer → estudiante termina teoría → notificación + lista de choferes
+visible → chofer aprueba → diploma generable.
+
 ## Testing antes de cada commit importante — sin cambios
 
 ## Pendiente real (frontend)
@@ -435,3 +500,7 @@ evaluador humano; tampoco se calcula ningún puntaje).
   (inspirado en academiavial.com), evaluar `framer-motion` — no se
   agregó en este bloque de trabajo, quedó fuera de alcance.
 - "Me gusta" en comentarios individuales de noticias.
+- **NUEVO:** si en el futuro se decide automatizar la asignación de
+  instructor (hoy la estudiante contacta directo, sin asignación),
+  revisar `PantallaListaParaPractica` en `dashboard/page.tsx` — hoy
+  asume que siempre se muestra la lista completa de choferes activos.

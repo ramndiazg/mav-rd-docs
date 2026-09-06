@@ -1,6 +1,6 @@
 # Arquitectura del Backend — mav-rd-backend
 
-> Refleja el estado REAL del código al 05/09/2026. Reemplaza la versión
+> Refleja el estado REAL del código al 06/09/2026. Reemplaza la versión
 > anterior de este mismo archivo. Para el historial de cómo se llegó aquí,
 > ver HISTORIAL_MODIFICACIONES.md.
 
@@ -21,14 +21,16 @@ cookies) + Cloudinary (archivos) + Resend (email) + Telegram Bot API
 - CORS: `origenesPermitidos` en `app.js` **ya no depende de una sola
   variable de entorno** — se cambió a una lista fija con los 4 orígenes
   válidos, para no perder acceso desde ningún dominio activo:
-  ```js
-  const origenesPermitidos = [
-    "http://localhost:3000",
-    "https://www.muvordvial.com",
-    "https://muvordvial.com",
-    "https://muvo-rd.vercel.app",
-  ];
-  ```
+
+```js
+const origenesPermitidos = [
+  "http://localhost:3000",
+  "https://www.muvordvial.com",
+  "https://muvordvial.com",
+  "https://muvo-rd.vercel.app",
+];
+```
+
 - Variables de entorno relevantes: JWT_SECRET, JWT_EXPIRES_IN, Cloudinary
   (cloud name/api key/secret), RESEND_API_KEY, RESEND_FROM,
   TELEGRAM_BOT_TOKEN, MONGODB_URI (o MONGO_URI, según el .env real — los
@@ -80,8 +82,13 @@ ARQUITECTURA_FRONTEND.md), leyendo los mismos precios de
 
 - JWT propio (sin cookies) — cada request protegido manda
   `Authorization: Bearer <token>` a mano desde el frontend.
-- 3 roles: `estudiante`, `coordinadora`, `admin` (la fundadora, María Díaz
-  Guzmán — cuenta real: `maria@test.com`).
+- 4 roles: `estudiante`, `coordinadora`, `admin` (la fundadora, María Díaz
+  Guzmán — cuenta real: `maria@test.com`) y `conductor` (NUEVO,
+  05/09/2026 — instructor de práctica, ver sección propia más abajo).
+  Ninguno de los 4 tiene registro público — `estudiante` es el único que
+  se crea vía `/registro`; los otros 3 los crea un admin desde el panel
+  (coordinadora y admin siguen haciéndose a mano en Atlas; `conductor` es
+  el primero con un endpoint real, ver más abajo).
 - `middleware/auth.js`: `protegerRuta` (requiere token válido) y
   `permitirRoles(...roles)` (restringe por rol).
 - Login rechaza con 403 si `usuario.activo` es `false`.
@@ -93,7 +100,10 @@ recuperación de contraseña, login con rechazo por cuenta desactivada.
 
 ## Usuarios (/api/usuarios)
 
-Sin cambios de esquema ni de endpoints desde la versión anterior.
+**ACTUALIZADO (05/09/2026):** se agregó `POST /api/usuarios/conductor`
+(admin) — ver sección "Seguimiento de práctica de manejo" más abajo.
+El resto del controller (`listarUsuarios`, `crearCoordinadora`,
+`cambiarEstado`, `cambiarRol`) sin cambios de comportamiento.
 
 ## Sesiones, contenido y exámenes
 
@@ -184,9 +194,16 @@ los endpoints reales (no a mano en Atlas) y volver a subir los PDFs
 corregidos. Ver también DATABASE.md (sección `contenidoSesion`) y el
 mismo problema en paralelo con `Examen` (ver más abajo).
 
-### `intentarDesbloquear()` y `entregarIntento()` — sin cambios en esta sesión
+### `intentarDesbloquear()` y `entregarIntento()` — NUEVO disparador de notificación (05/09/2026)
 
-Sin cambios de comportamiento desde la versión anterior de este archivo.
+`intentarDesbloquear()` sin cambios. `entregarIntento()` (en
+`intentoExamenController.js`) sí cambió: en el mismo bloque donde ya se
+ponía `progreso.cursoCompletado = true` al aprobar la sesión 4, ahora se
+captura el valor anterior de `cursoCompletado` (`completadoAntes`) antes
+de modificarlo, y si pasó de `false` a `true` en esta misma llamada, se
+dispara `notificarEstudianteListaParaPractica` (sin `await`, no bloquea
+la respuesta). Ver detalle completo en "Seguimiento de práctica de
+manejo" más abajo.
 
 ### `Examen` — creados, pero con un bug grave (28/08/2026)
 
@@ -255,9 +272,66 @@ específica, tiempo de retención de datos, etc.) antes de usarlo con
 estudiantes reales — no es una recomendación legal, solo una alerta de
 que el tema existe.
 
+## NUEVO: Seguimiento de práctica de manejo (05/09/2026)
+
+Pedido directo del usuario, en dos partes: (1) avisar a un instructor
+real cuando una estudiante termina la teoría, con todos sus datos, para
+que se le dé seguimiento; (2) que ese mismo instructor confirme la
+práctica antes de que se pueda generar el diploma. Deliberadamente
+**sin asignación automática** de instructor a estudiante — el chofer se
+crea con sus datos y horarios, se le muestran a la estudiante, y es
+ella quien lo contacta directamente.
+
+- **`models/Instructor.js`** (NUEVO) — perfil extendido de un `User` con
+  `rol: "conductor"`: `diasDisponibles` (array de `{ dia, horario }`,
+  texto libre en `horario`) y `activo`. Nombre/teléfono/correo ya viven
+  en `User`, no se duplican.
+- **`models/DestinatarioPractica.js`** (NUEVO) — mismo esquema que
+  `DestinatarioNotificacion`, **colección separada a propósito**: nunca
+  se mezcla con los avisos de vouchers/balance/empresas.
+- **`User.rol`** — se agregó `"conductor"` al enum.
+- **`ProgresoEstudiante`** — 3 campos nuevos: `practicaAprobada`,
+  `fechaAprobacionPractica`, `practicaAprobadaPor`. Ver DATABASE.md.
+- **`POST /api/usuarios/conductor`** (admin, en `usuarioController.js`)
+  — crea el `User` y su `Instructor` asociado en un solo paso. No hay
+  registro público, igual que coordinadora/admin (hoy también se crean
+  a mano en Atlas — este es el primer rol con un endpoint real para
+  crearlo desde el panel, en "Solo fundadora").
+- **`GET /api/instructores`** (admin) y **`GET /api/instructores/activos`**
+  (estudiante/conductor/coordinadora/admin — solo nombre, teléfono,
+  correo y horarios) + `PATCH /api/instructores/:id` (admin, editar
+  horarios/activo).
+- **`controllers/destinatarioPracticaController.js`** +
+  `routes/destinatarioPracticaRoutes.js` — copia 1:1 del patrón de
+  `destinatarioController.js`, montado en `/api/destinatarios-practica`,
+  exclusivo admin.
+- **Disparador**: en `intentoExamenController.js#entregarIntento`, en el
+  mismo bloque donde ya se ponía `progreso.cursoCompletado = true`, se
+  captura el valor anterior (`completadoAntes`) para notificar **solo
+  la primera vez** que se completa — evita reenvíos si algo más
+  recalcula el progreso después.
+- **`utils/notificaciones.js#notificarEstudianteListaParaPractica`**
+  (NUEVA) — va a dos destinos a la vez: cada `Instructor` activo,
+  directo a su correo (vía `User.email`), y los `DestinatarioPractica`
+  activos (visibilidad para fundadora/coordinadora). Sin `await` a
+  propósito, mismo patrón que `enviarCorreoDiplomaListo`.
+- **`controllers/practicaController.js`** + `routes/practicaRoutes.js`
+  (rol `conductor`/`admin`) — `GET /api/practica/pendientes` (estudiantes
+  con `cursoCompletado: true` y `practicaAprobada: false`) y
+  `POST /api/practica/:userId/aprobar`.
+- **Gate del diploma**: ver sección "Diplomas" más abajo.
+
+Probado de punta a punta en esta sesión — crear chofer, login como
+conductor, notificación al completar teoría, aprobación de práctica y
+generación de diploma condicionada — todo funcionando.
+
 ## Diplomas (/api/diplomas)
 
-Sin cambios en esta sesión.
+**ACTUALIZADO (05/09/2026):** `listarElegibles` y `generarDiploma` ahora
+exigen también `progreso.practicaAprobada`, no solo `cursoCompletado` —
+ver la sección "Seguimiento de práctica de manejo" de arriba para el
+flujo completo. Sin este campo en `true`, `generarDiploma` responde 400
+aunque la teoría esté completa.
 
 ## Inscripciones y pagos
 
@@ -271,7 +345,10 @@ Sin cambios en esta sesión.
 `DestinatarioNotificacion` con `activo: true` y notifica a cada uno por
 su `tipo` (`email` vía Resend, `telegram` vía Bot API). No se agregó
 ninguna colección ni configuración nueva — llega al mismo correo
-institucional que ya recibe los demás avisos internos.
+institucional que ya recibe los demás avisos internos. **NUEVO
+(05/09/2026):** se agregó `notificarEstudianteListaParaPractica`, que
+usa un mecanismo aparte (`DestinatarioPractica` + `Instructor`) — ver
+sección "Seguimiento de práctica de manejo" arriba.
 
 ## Formulario empresarial (Empresas)
 
@@ -322,9 +399,7 @@ qué consultar, y responde con cifras reales, nunca inventadas.
   Google Cloud **sin facturación activada** (activarla mata la capa
   gratuita para ese proyecto).
 
-### Turbulencia real al integrar (documentada para no repetir la
-
-### investigación si Google vuelve a cambiar algo)
+### Turbulencia real al integrar (documentada para no repetir la investigación si Google vuelve a cambiar algo)
 
 Google está iterando la API de Gemini muy rápido (3.6 → 3.7 → 3.8 Flash
 en cuestión de semanas durante 2026). Dos problemas reales encontrados
@@ -475,3 +550,6 @@ scope `workflow` incluido evita este paso extra.
   cuando la app esté más madura.
 - Afinar el rol `backup_readonly` en Atlas de `readAnyDatabase@admin` a
   un rol Read específico sobre `mav_rd` (no urgente, es de solo lectura).
+- **NUEVO:** monitorear si con más choferes hace falta algún
+  filtro/paginación en `GET /instructores/activos` — hoy devuelve todos
+  los activos sin distinción, suficiente para la cantidad actual.

@@ -4,6 +4,87 @@
 > ARQUITECTURA_BACKEND.md, ARQUITECTURA_FRONTEND.md y DATABASE.md, este
 > archivo es solo un changelog, no la fuente de verdad de cómo funciona nada.
 
+## 06/09/2026 — Seguimiento de práctica de manejo (choferes) + fix de dominio en tarjeta compartible
+
+### Contexto de arranque
+
+Dos pedidos del usuario en la misma sesión. El primero, de análisis:
+hoy, cuando una estudiante termina toda la teoría, nadie se entera para
+darle seguimiento en la práctica de manejo — ni un instructor recibe
+sus datos, ni ella sabe qué sigue. El segundo, más grande: la
+propietaria quiere explorar "Movilidad Vial Escolar" (colegios pagando
+el curso para sus estudiantes). Se decidió explícitamente **dejar la
+parte escolar para otra sesión** y concentrar esta en que el
+seguimiento de práctica funcione bien y sin errores.
+
+### Decisiones del usuario, antes de construir
+
+1. El chofer se crea desde el panel de admin ("Solo fundadora") con
+   nombre, celular, correo y días/horarios de práctica — esos mismos
+   datos se le muestran a la estudiante para que ella lo contacte
+   directamente. **Sin asignación automática** de instructor a
+   estudiante.
+2. La notificación al completar la teoría va al correo de cada chofer
+   activo, y por separado a una lista de destinatarios dedicada solo a
+   avisos de práctica — nunca mezclada con la lista administrativa ya
+   existente (vouchers/balance/empresas).
+3. Solo se considera "lista para práctica" a una estudiante que termine
+   los 4 módulos **con sus respectivos exámenes** aprobados.
+4. Se agrega un rol/dashboard de conductor donde el chofer aprueba la
+   práctica de cada estudiante — esa aprobación pasa a ser, junto con
+   `cursoCompletado`, requisito para poder generar el diploma.
+5. El carrito animado del dashboard (`ProgresoCarretera`) debía
+   extenderse para reflejar también el avance en la etapa de práctica,
+   no solo teoría.
+
+### Construido
+
+Backend: `models/Instructor.js` y `models/DestinatarioPractica.js`
+(nuevos), `User.rol` con `"conductor"` agregado, `ProgresoEstudiante`
+con `practicaAprobada`/`fechaAprobacionPractica`/`practicaAprobadaPor`,
+`POST /api/usuarios/conductor` (crea `User` + `Instructor` en un paso),
+`GET /api/instructores` y `/activos` + `PATCH /api/instructores/:id`,
+CRUD de `destinatariosPractica` (copia 1:1 del patrón existente),
+`GET /api/practica/pendientes` + `POST /api/practica/:userId/aprobar`,
+disparador de notificación en `entregarIntento()` (detecta la
+transición `cursoCompletado` false→true para notificar una sola vez), y
+el gate nuevo en `generarDiploma`/`listarElegibles` exigiendo también
+`practicaAprobada`. Ver ARQUITECTURA_BACKEND.md para el detalle
+completo.
+
+Frontend: 4to valor de `Rol` (`"conductor"`) en `AuthContext.tsx` y
+`RutaProtegida.tsx`, redirección nueva en `login/page.tsx`,
+`dashboard/page.tsx` con la pantalla de felicitación + lista de
+choferes (o "diploma en camino" si ya aprobó), `ProgresoCarretera.tsx`
+reflejando `practicaAprobada` en la parada de práctica,
+`admin/choferes/page.tsx` y `admin/notificaciones-practica/page.tsx`
+(nuevos), y `(conductor)/practica/layout.tsx` + `page.tsx` (dashboard
+del chofer). Ver ARQUITECTURA_FRONTEND.md.
+
+### Errores encontrados y corregidos en el camino
+
+- Tres páginas nuevas (`admin/choferes`, `admin/notificaciones-practica`,
+  `(conductor)/practica`) llamaban a una función `cargar()` directo
+  dentro de un `useEffect`, disparando el lint/error de React "Calling
+  setState synchronously within an effect" — corregido moviendo la
+  lógica de fetch inline dentro del propio efecto (con su `cancelado`),
+  en vez de invocar una función externa que hace `setState`.
+- La tarjeta de diploma compartible (`app/(estudiante)/diploma/page.tsx`)
+  seguía apuntando al dominio viejo (`muvo-rd.vercel.app`) en el texto
+  visible bajo el QR, aunque el QR en sí ya usaba `URL_INICIO` — el
+  texto estaba escrito literal y aparte. Corregido: ambos (QR y texto)
+  ahora salen de la misma constante `URL_INICIO`
+  (`https://www.muvordvial.com`), con `DOMINIO_VISIBLE` derivado de ella
+  para el texto, para que no se puedan desincronizar otra vez.
+
+### Estado al cierre
+
+Probado de punta a punta por el usuario: crear chofer → login como
+chofer → estudiante termina teoría → notificación + lista de choferes
+visible → chofer aprueba → diploma generable. Confirmado funcionando.
+La parte de Movilidad Vial Escolar queda pendiente de diseño para otra
+sesión (ver más abajo).
+
 ## 05/09/2026 — Test psicológico de perfil conductual, entre el pago y el acceso al contenido
 
 ### Contexto de arranque
@@ -984,6 +1065,18 @@ admin con CRUD de noticias/testimonios/FAQ/contenido de página/contabilidad.
   entregado. Sería el canal de respaldo, ya no el único camino
   disponible (el correo real ya funciona).
 
+### NUEVO: Movilidad Vial Escolar — pendiente de diseño (06/09/2026)
+
+- La propietaria quiere explorar que colegios paguen el curso teórico
+  para sus estudiantes (organizados por grado y sección), quienes
+  reciben usuario/contraseña propios y un diploma gestionado por el
+  colegio. Se decidió explícitamente dejarlo para otra sesión — no
+  empezado. Puntos abiertos identificados en el análisis inicial: si
+  aplica práctica de manejo para estos estudiantes (probablemente
+  menores de edad, sin instructor asignado igual que el flujo actual),
+  y el tema de consentimiento parental/legal para menores, que no se ha
+  resuelto con la fundadora.
+
 ### Corrección de documentación pendiente (sin bloqueo)
 
 - Confirmar y corregir la estructura real de rutas del estudiante en
@@ -1022,6 +1115,9 @@ admin con CRUD de noticias/testimonios/FAQ/contenido de página/contabilidad.
   necesitan algunos testimonios, no vale la pena automatizar la captura.
 - Recordatorio/botón de backup automatizado desde el panel de admin:
   evaluado, descartado — el backup se mantiene 100% manual.
+- **Asignación automática de instructor de práctica**: NO se hará por
+  ahora — la estudiante contacta directo al chofer de una lista, sin
+  match automático (decisión del 06/09/2026, ver esa entrada).
 
 ### Mejoras menores sin empezar
 
@@ -1032,14 +1128,23 @@ admin con CRUD de noticias/testimonios/FAQ/contenido de página/contabilidad.
 - Confirmar los valores hex reales de los tokens de color `brand-yellow`
   y `brand-mamey` (en uso en el home desde la sesión sin documentar) y
   actualizar la tabla de colores en ARQUITECTURA_FRONTEND.md.
+- Monitorear si con más choferes hace falta algún filtro/paginación en
+  `GET /instructores/activos` — hoy devuelve todos los activos sin
+  distinción (06/09/2026).
 
 ### Ya resuelto (para no volver a preguntarlo)
 
+- **Seguimiento de práctica de manejo** (choferes creados desde el
+  panel de admin, notificación al completar teoría, dashboard del
+  conductor para aprobar práctica, gate del diploma) — construido y
+  confirmado funcionando el 06/09/2026, ver esa entrada.
+- **Bug de dominio en la tarjeta de diploma compartible** (el texto
+  visible seguía en `muvo-rd.vercel.app` aunque el QR ya usaba el
+  dominio propio) — corregido el 06/09/2026, ver esa entrada.
 - Test psicológico de perfil conductual (54 preguntas + 5 reflexiones,
   gate obligatorio antes del contenido, sin puntaje calculado) —
   construido y confirmado funcionando el 05/09/2026, ver esa entrada.
   Pendiente real restante: confirmación legal (ver arriba).
-
 - Chatbot interno para la fundadora (Gemini 3.6 Flash + function
   calling, 7 herramientas de solo lectura) y resumen diario automatizado
   por correo/Telegram (GitHub Action a las 9pm) — ambos construidos y

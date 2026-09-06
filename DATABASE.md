@@ -4,7 +4,7 @@
 > mujeresalvolante.rd4sofa.mongodb.net (versión real confirmada: 8.0.29).
 > Mongoose como ODM. Todas las colecciones usan \_id (ObjectId) automático
 > y createdAt/updatedAt (timestamps automáticos de Mongoose), salvo que se
-> indique lo contrario. Refleja el estado real al 05/09/2026.
+> indique lo contrario. Refleja el estado real al 06/09/2026.
 
 ---
 
@@ -40,7 +40,7 @@ definidos los temas reales.
 
 ---
 
-## 1. users — sin cambios de esquema
+## 1. users — NUEVO valor de rol "conductor" (05/09/2026)
 
 ```js
 {
@@ -52,7 +52,11 @@ definidos los temas reales.
   passwordHash: String,    // bcrypt
   provincia: String,
   fechaNacimiento: Date,
-  rol: String,             // 'estudiante' | 'coordinadora' | 'admin'
+  rol: String,             // 'estudiante' | 'coordinadora' | 'admin' | 'conductor'
+                            // 'conductor' agregado 05/09/2026 — instructor
+                            // que aprueba la práctica de manejo. Ninguno de
+                            // los 4 roles tiene registro público excepto
+                            // 'estudiante' — los otros 3 los crea un admin.
   activo: Boolean,
 
   emailVerificado: Boolean,
@@ -132,7 +136,28 @@ documento.
 
 ## 6. intentosExamen — sin cambios de esquema, colección vacía
 
-## 7. progresoEstudiante — sin cambios de esquema, colección vacía
+## 7. progresoEstudiante — NUEVOS campos de práctica (05/09/2026)
+
+```js
+{
+  _id: ObjectId,
+  userId: ObjectId,       // ref: users, único
+  sesionActualDesbloqueada: Number,
+  sesionesAprobadas: [Number],
+  cursoCompletado: Boolean,       // 4 sesiones + 4 exámenes aprobados
+  contenidosVistos: [ObjectId],   // ref: contenidoSesion
+  fechasAprobacionSesion: [{ sesion: Number, fecha: Date }],
+
+  // NUEVO — seguimiento de práctica de manejo. Requisito adicional y
+  // separado de cursoCompletado; ambos son necesarios para generar el
+  // diploma (ver diplomaController.js en ARQUITECTURA_BACKEND.md).
+  practicaAprobada: Boolean,       // default false
+  fechaAprobacionPractica: Date,   // default null
+  practicaAprobadaPor: ObjectId,   // ref: users (el conductor que aprobó)
+
+  createdAt: Date, updatedAt: Date
+}
+```
 
 ## 8. contenidoSesion — NUEVO campo `publicIdCloudinary` (13/08/2026)
 
@@ -181,6 +206,8 @@ Es el mismo mecanismo que usan la solicitud del formulario de Empresas,
 el chatbot no (es consulta directa, no notificación push) y el nuevo
 resumen diario automatizado (ver ARQUITECTURA_BACKEND.md) — no se
 agregó ninguna colección nueva para el mecanismo de envío en sí.
+**Sigue separada** de la nueva `destinatariosPractica` (ver más abajo)
+— nunca se mezclan.
 
 ## 17. solicitudesEmpresariales — NUEVA (04/09/2026)
 
@@ -234,9 +261,50 @@ contiene "datos sensibles" bajo la Ley 172-13 de Protección de Datos de
 RD — pendiente que la fundadora lo confirme con asesoría legal antes de
 usarlo con estudiantes reales (ver ARQUITECTURA_BACKEND.md).
 
+## 19. instructores — NUEVA (05/09/2026)
+
+```js
+{
+  _id: ObjectId,
+  userId: ObjectId,        // ref: users, único — el User debe tener rol "conductor"
+  diasDisponibles: [{ dia: String, horario: String }],
+                            // dia: enum de días de la semana en minúscula
+                            // horario: texto libre, ej "2:00 PM - 5:00 PM"
+  activo: Boolean,          // default true
+  createdAt: Date, updatedAt: Date
+}
+```
+
+Se crea junto con el `User` (`rol: "conductor"`) en un solo paso, vía
+`POST /api/usuarios/conductor` (admin, panel "Solo fundadora" — no hay
+registro público para este rol, igual que coordinadora/admin). Nombre,
+teléfono y correo viven en `User`, no se duplican aquí. Deliberadamente
+**sin ningún campo de asignación a estudiante** — el flujo es que la
+estudiante ve la lista de instructores activos y los contacta ella
+misma, no hay match automático (ver ARQUITECTURA_BACKEND.md).
+
+## 20. destinatariosPractica — NUEVA (05/09/2026)
+
+```js
+{
+  _id: ObjectId,
+  tipo: String,      // 'email' | 'telegram'
+  valor: String,
+  etiqueta: String,
+  activo: Boolean,
+  creadoPor: ObjectId, // ref: users
+  createdAt: Date, updatedAt: Date
+}
+```
+
+Esquema idéntico a `destinatariosNotificacion`, pero **colección
+separada a propósito** — solo recibe avisos de "estudiante lista para
+práctica", nunca se mezcla con vouchers/balance/empresas. Gestionada
+desde un panel de admin aparte (`/admin/notificaciones-practica`).
+
 ---
 
-## Índices recomendados — sin cambios
+## Índices recomendados — sin cambios excepto 1 nuevo
 
 - users: único en cedula y email.
 - inscripciones: { userId }, único (sparse) en numeroReferencia.
@@ -251,6 +319,7 @@ usarlo con estudiantes reales (ver ARQUITECTURA_BACKEND.md).
 - solicitudesEmpresariales: { createdAt: -1 } (ya definido en el
   esquema con `.index()`).
 - testsPsicologicos: único en userId (ya definido en el esquema).
+- **instructores: único en userId (NUEVO, 05/09/2026).**
 
 ## Notas de diseño
 
@@ -280,3 +349,6 @@ usarlo con estudiantes reales (ver ARQUITECTURA_BACKEND.md).
   público, un error ahí es más visible.
 - Afinar el rol `backup_readonly` en Atlas de `readAnyDatabase@admin` a
   un rol Read específico sobre `mav_rd` (no urgente).
+- **NUEVO:** monitorear si con más choferes hace falta algún
+  filtro/paginación en `GET /instructores/activos` — hoy devuelve todos
+  los activos sin distinción, suficiente para la cantidad actual.
