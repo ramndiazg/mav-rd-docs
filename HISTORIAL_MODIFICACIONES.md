@@ -4,6 +4,102 @@
 > ARQUITECTURA_BACKEND.md, ARQUITECTURA_FRONTEND.md y DATABASE.md, este
 > archivo es solo un changelog, no la fuente de verdad de cómo funciona nada.
 
+## 07/09/2026 — Reestructuración de planes (Fundación/Estándar/VIP), UI de admin, purga de usuarios, y diseño completo de Escolar/Empresarial/Motorista
+
+### Contexto de arranque
+
+Sesión larga con varios pedidos encadenados. Empezó con un análisis de
+factibilidad: la fundadora quiere agregar dos líneas de formación nuevas
+(Escolar y Empresarial) y, aprovechando el cambio, restructurar los
+planes actuales de 2 (Normal RD$1,500 / VIP RD$7,000) a 3. El análisis
+inicial completo (currículo distinto, multi-tenencia, legal de menores)
+se simplificó varias veces por decisión del usuario hasta llegar a un
+diseño mucho más chico de lo que parecía al principio — ver "Diseño de
+Escolar/Empresarial" más abajo.
+
+### Purga de usuarios de prueba (segunda purga)
+
+Se detectó, revisando `DATABASE.md`, que quedaba pendiente sin resolver
+desde antes: no había criterio definido para identificar qué datos
+seguían siendo de prueba tras la purga del 06/08/2026. Se definió el
+criterio con el usuario (todos los usuarios excepto `maria@test.com`,
+sin importar rol) y se construyó `scripts/purgarUsuariosPrueba.js` —
+igual patrón de seguridad que el script viejo (dry-run por defecto,
+confirmación escrita), pero con cascada actualizada (`TestPsicologico`,
+`Instructor`) y sin tocar `Sesion`/`Examen`/`ContenidoSesion` (esas ya
+tenían contenido real). Corrido en modo real: se borraron 4 usuarios (3
+estudiante + 1 conductor) y su cascada completa. Ver DATABASE.md para el
+detalle exacto.
+
+**Nota de proceso:** al copiar el script, el usuario sobrescribió por
+accidente el `purgarDatosPrueba.js` original y generó un archivo con
+typo (`purgaUsuariosPrueba.js`, sin la "r") — se corrigió renombrando,
+sin pérdida de datos.
+
+### Reestructuración de planes (Fundación/Estándar/VIP)
+
+Se decidió separar esto del trabajo de Escolar/Empresarial por ser
+autocontenido y no depender de nada más. La fundadora dio los datos
+reales de cada plan (precio, duración y cantidad de sesiones de
+práctica, costo de combustible por sesión, características de VIP)
+durante la conversación. Se construyó:
+
+- Colección nueva `Plan` (reemplaza `precio_plan_normal`/`precio_plan_vip`
+  sueltos en `Configuracion`) — ver DATABASE.md para el schema completo.
+- `GET /api/planes`, `GET /api/planes/:codigo`, `GET /api/planes/admin/todos`,
+  `PATCH /api/planes/:codigo` — ver ARQUITECTURA_BACKEND.md.
+- `scripts/migrarPlanes.js` — siembra los 3 planes, reetiqueta
+  inscripciones viejas.
+- Home (`app/page.tsx`) e `/inscripcion` actualizados para leer de
+  `/api/planes` en vez de `/api/configuracion` — 3 tarjetas dinámicas en
+  vez de 2 hardcodeadas. Decisión explícita del usuario: el Home muestra
+  solo resumen (precio + frase corta), el detalle completo de sesiones
+  de práctica y características vive únicamente en `/inscripcion`.
+- Pantalla nueva `admin/planes/page.tsx` — edición de cualquier campo de
+  cada plan sin tocar código ni Atlas. Cierra un pendiente que llevaba
+  abierto desde el 13/08/2026.
+
+**Corrección post-deploy:** el primer intento de montar `planRoutes` en
+`app.js` usó una ruta relativa incorrecta (`./src/routes/...` desde un
+archivo que ya vive dentro de `src/`, causando un `src/src` duplicado y
+`MODULE_NOT_FOUND` en el deploy de Render) — corregido a `./routes/...`.
+
+**Ajuste de precio post-lanzamiento:** horas después de construir esto,
+el usuario recordó una conversación con la fundadora que no había
+trasladado antes: el plan de entrada debía llamarse "Plan Estándar" (no
+"Normal") y costar RD$1,000 (no RD$1,500). Se aplicó reeditando
+`migrarPlanes.js` y corriéndolo de nuevo — el diseño ya soportaba este
+tipo de cambio sin tocar ni un archivo de frontend, solo datos.
+
+### Decisión de diseño importante: campo `programa`, agregado a tiempo
+
+A media conversación, el usuario expresó preocupación real: cada
+conversación con la fundadora revela una necesidad de contenido
+diferenciado por tipo de curso que no estaba planeada al inicio (primero
+Escolar, luego Empresarial, y el mismo día, un cuarto: un curso para
+motoristas/motorizados). Se decidió, antes de que existiera ningún
+documento real de `Plan`/`Inscripcion`, agregar un campo `programa`
+(`String`, default `"estandar"`, sin enum cerrado) a ambos modelos —
+gratis de hacer en ese momento porque no había nada que migrar. Separa
+deliberadamente "qué currículo se enseña" (`programa`) de "qué nivel de
+práctica/precio dentro de ese currículo" (`tipoPlan`). Ver
+ARQUITECTURA_BACKEND.md y `ESPECIFICACION_PROGRAMAS_NUEVOS.md`.
+
+### Diseño de Escolar/Empresarial — consolidado, no construido todavía
+
+Se simplificó el alcance varias veces durante la conversación hasta
+llegar a un diseño mucho más chico que el análisis inicial (que incluía
+multi-tenencia completa, RBAC nuevo, etc.). El diseño final acordado:
+sin currículo/examen distinto (se reusa el existente), sin práctica de
+manejo, colegios/empresas nunca entran a la app (Muvo crea las cuentas),
+reciben un reporte periódico por correo. **Todo el detalle — modelo de
+`Grupo`, los dos formularios (grupo + roster separado), el cuestionario
+informativo de Escolar con las 14 preguntas ya redactadas, el prorrateo
+contable, y el cron de reporte a las 10am — está en
+`ESPECIFICACION_PROGRAMAS_NUEVOS.md` (nuevo), para no repetir el análisis
+en la próxima sesión.** Motorista se mencionó pero no se diseñó a este
+nivel de detalle todavía.
+
 ## 06/09/2026 — Seguimiento de práctica de manejo (choferes) + fix de dominio en tarjeta compartible
 
 ### Contexto de arranque

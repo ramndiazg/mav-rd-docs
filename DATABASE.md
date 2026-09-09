@@ -4,7 +4,29 @@
 > mujeresalvolante.rd4sofa.mongodb.net (versión real confirmada: 8.0.29).
 > Mongoose como ODM. Todas las colecciones usan \_id (ObjectId) automático
 > y createdAt/updatedAt (timestamps automáticos de Mongoose), salvo que se
-> indique lo contrario. Refleja el estado real al 06/09/2026.
+> indique lo contrario. Refleja el estado real al 07/09/2026.
+
+---
+
+## Segunda purga: usuarios de prueba, todos los roles (07/09/2026)
+
+Se corrió `scripts/purgarUsuariosPrueba.js` (nuevo, no confundir con
+`purgarDatosPrueba.js` de la purga anterior) en modo real. A diferencia de
+la purga del 06/08/2026, esta vez el criterio fue "todos los usuarios
+excepto `maria@test.com`, sin importar rol" (confirmado explícitamente con
+el usuario, incluyendo coordinadora/admin/conductor) — y a diferencia del
+script viejo, **no tocó `Sesion`, `Examen` ni `ContenidoSesion`** (esas ya
+tenían contenido real, aunque con bugs pendientes de corregir aparte).
+
+Se borraron 4 usuarios (3 `estudiante` + 1 `conductor`, el mismo que se
+había probado de punta a punta el 06/09) y su cascada: 2 `inscripciones`,
+5 `intentosExamen`, 2 `progresoEstudiante`, 1 `diploma`, 1
+`testPsicologico`, 1 `instructor`. **Sobrevivió únicamente** la cuenta
+`maria@test.com` (rol `admin`). No se tocó `movimientosContables`
+(confirmado que no había pagos reales confirmados todavía).
+
+**Efecto colateral esperado, no un bug:** `GET /instructores/activos`
+devuelve vacío hasta que se cree un chofer real de nuevo.
 
 ---
 
@@ -70,20 +92,40 @@ definidos los temas reales.
 }
 ```
 
-## 2. inscripciones — sin cambios de esquema
+## 2. inscripciones — reestructuración de planes + campo `programa` nuevo (07/09/2026)
 
-`tipoPlan` (`"normal" | "vip"`) sigue siendo la única diferencia
-estructurada entre planes — la teoría es la misma para ambos, la
-diferencia real es la práctica de manejo (ver ARQUITECTURA_BACKEND.md).
-Ver ese mismo archivo para el detalle de los dos flujos de pago.
+**`tipoPlan` pasó de `["normal","vip"]` a `["fundacion","normal","vip"]`**
+— ver sección nueva "21. Plan" más abajo para el detalle completo de cada
+uno (precio, sesiones de práctica, características). La inscripción
+`"normal"` vieja (RD$1,500) se reetiquetó a `"fundacion"` vía
+`scripts/migrarPlanes.js` — 0 documentos migrados en la práctica porque ya
+no quedaba ninguna inscripción real al momento de correrlo (ver purga de
+arriba).
 
-## 3. configuracion (key-value) — sin cambios de esquema
+**NUEVO campo `programa`** (`String, default: "estandar"`, sin enum
+cerrado a propósito): decisión tomada en esta sesión al discutir que se
+va a necesitar contenido diferente para Escolar, Empresarial y — anunciado
+por la fundadora el 06/09/2026 — un curso para motoristas. `programa`
+(qué currículo cursa) queda deliberadamente separado de `tipoPlan` (qué
+nivel de práctica/precio dentro de ese currículo) — son dos dimensiones
+distintas. Hoy solo existe el programa `"estandar"`; el campo se agregó
+ahora, sin nada que migrar, para no pagar una migración más cara después.
+Ver `ESPECIFICACION_PROGRAMAS_NUEVOS.md` para el diseño completo de los
+programas nuevos.
 
-Incluye `precio_plan_normal` y `precio_plan_vip` — ya se leían desde
-`/inscripcion`, y desde el 13/08/2026 también se leen en el home público
-(`GET /api/configuracion`, sin auth) para mostrar los precios ahí. **No
-hay todavía una UI de admin para editarlos** — se cambian a mano en
-Atlas (ver pendientes en ARQUITECTURA_BACKEND.md).
+`tipoPlan` (dentro de cada programa) sigue siendo la única diferencia
+estructurada entre planes — la teoría es la misma para todos los planes
+de un mismo programa, la diferencia real está en la práctica de manejo.
+Ver ARQUITECTURA_BACKEND.md para el detalle de los dos flujos de pago.
+
+## 3. configuracion (key-value) — precios de plan DEPRECADOS (07/09/2026)
+
+`precio_plan_normal` y `precio_plan_vip` **ya no los lee ningún endpoint**
+— los precios y el resto de atributos de cada plan viven ahora en la
+colección `Plan` nueva (ver sección 21). Los registros viejos con esas
+claves quedan huérfanos en Atlas; no se borraron, pero no se debe seguir
+escribiendo ahí para precios. El resto de `configuracion` (lo que no sea
+`precio_plan_*`) sigue funcionando igual, sin cambios.
 
 ## 4. sesiones — ya recreada tras la purga (13/08/2026)
 
@@ -304,6 +346,56 @@ desde un panel de admin aparte (`/admin/notificaciones-practica`).
 
 ---
 
+## 21. Plan — NUEVA (07/09/2026)
+
+```js
+{
+  _id: ObjectId,
+  programa: String,        // default "estandar" — sin enum cerrado, a
+                            // propósito, por los programas futuros
+                            // (escolar/empresarial/motorista)
+  codigo: String,           // enum: 'fundacion' | 'normal' | 'vip'
+  nombre: String,
+  precio: Number,
+  fraseDestacada: String,   // copy corto, tarjetas del Home
+  modalidadPractica: String, // 'grupal' | 'individual'
+  cantidadSesionesPractica: Number, // null si modalidadPractica es grupal
+  duracionSesionMinutos: Number,
+  costoPorSesion: Number,   // combustible — informativo, se paga en el
+                            // lugar de la práctica, NO se cobra en la app
+  caracteristicas: [String], // detalle largo, se muestra en /inscripcion
+  activo: Boolean,
+  orden: Number,
+  createdAt: Date, updatedAt: Date
+}
+```
+
+Reemplaza `precio_plan_normal`/`precio_plan_vip` de `configuracion` (ver
+sección 3). Sembrada por `scripts/migrarPlanes.js` con los 3 planes
+reales:
+
+| codigo    | nombre                                  | precio   | modalidad  | sesiones práctica           | combustible/sesión |
+| --------- | --------------------------------------- | -------- | ---------- | --------------------------- | ------------------ |
+| fundacion | Plan de la Fundación Mujeres al Volante | RD$1,000 | grupal     | 15 min c/u, sin número fijo | RD$300             |
+| normal    | Plan Estándar                           | RD$4,500 | individual | 8 sesiones de 60 min        | RD$500             |
+| vip       | Plan VIP                                | RD$7,500 | individual | 10 sesiones de 60 min       | RD$500             |
+
+VIP incluye además en `caracteristicas`: acompañamiento al INTRANT,
+preparación para su examen teórico, instrucciones para el examen del
+permiso de aprendizaje, e instrucciones para el examen práctico de la
+licencia.
+
+**Historial de precios:** el plan de entrada se llamó "Normal" a
+RD$1,500 y el más completo "VIP" a RD$7,000 antes del 07/09/2026. Se
+restructuró a 3 niveles (Fundación/Estándar/VIP) el mismo día; el precio
+de Fundación bajó a RD$1,000 tras una corrección pedida por la fundadora
+horas después del cambio inicial (que había quedado en RD$1,500).
+
+**Editable desde el panel:** `admin/planes/page.tsx` (nuevo,
+07/09/2026) — no hace falta tocar código ni Atlas para cambiar precio,
+nombre, frase destacada, características, o activar/desactivar un plan.
+Ver ARQUITECTURA_FRONTEND.md.
+
 ## Índices recomendados — sin cambios excepto 1 nuevo
 
 - users: único en cedula y email.
@@ -320,6 +412,9 @@ desde un panel de admin aparte (`/admin/notificaciones-practica`).
   esquema con `.index()`).
 - testsPsicologicos: único en userId (ya definido en el esquema).
 - **instructores: único en userId (NUEVO, 05/09/2026).**
+- **Plan: único compuesto { programa, codigo } (NUEVO, 07/09/2026) — no
+  global, para que un mismo código ("vip", por ejemplo) pueda repetirse
+  en programas distintos el día que existan.**
 
 ## Notas de diseño
 
@@ -344,11 +439,22 @@ desde un panel de admin aparte (`/admin/notificaciones-practica`).
   1"..."Sesión 4") a los temas reales — separado del pendiente de
   arriba, pero buen momento para hacerlo junto ya que se va a tocar
   contenido de las mismas sesiones de todas formas.
-- Construir una UI de admin para editar `configuracion` (precios) en vez
-  de cambiarlos a mano en Atlas — ahora que se muestran en el home
-  público, un error ahí es más visible.
+- Construir una UI de admin para editar `configuracion` (lo que NO sean
+  precios de plan, que ya se resolvió — ver `Plan` arriba) en vez de
+  cambiarlos a mano en Atlas.
 - Afinar el rol `backup_readonly` en Atlas de `readAnyDatabase@admin` a
   un rol Read específico sobre `mav_rd` (no urgente).
 - **NUEVO:** monitorear si con más choferes hace falta algún
   filtro/paginación en `GET /instructores/activos` — hoy devuelve todos
-  los activos sin distinción, suficiente para la cantidad actual.
+  los activos sin distinción, suficiente para la cantidad actual. Nota:
+  con la purga del 07/09, hoy no hay ningún instructor activo — hace
+  falta crear uno de nuevo cuando se retome la prueba de práctica.
+- **NUEVO (07/09/2026): implementar los programas Escolar, Empresarial y
+  Motorista.** El campo `programa` ya existe en `Plan` e `Inscripcion`
+  (ver arriba), pero ningún programa nuevo está construido todavía —
+  falta `Sesion`/`Examen`/`ContenidoSesion` con el campo `programa` (hoy
+  no lo tienen, son implícitamente `"estandar"`), la colección `Grupo`
+  para colegios/empresas, el cuestionario informativo de Escolar, y el
+  cron de reportes. **Ver `ESPECIFICACION_PROGRAMAS_NUEVOS.md`** — ahí
+  está todo el diseño ya acordado con el usuario, listo para construirse
+  sin tener que volver a analizarlo desde cero.

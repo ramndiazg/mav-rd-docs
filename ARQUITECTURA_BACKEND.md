@@ -1,6 +1,6 @@
 # Arquitectura del Backend — mav-rd-backend
 
-> Refleja el estado REAL del código al 06/09/2026. Reemplaza la versión
+> Refleja el estado REAL del código al 07/09/2026. Reemplaza la versión
 > anterior de este mismo archivo. Para el historial de cómo se llegó aquí,
 > ver HISTORIAL_MODIFICACIONES.md.
 
@@ -67,16 +67,44 @@ neutros desde el inicio), así que este cambio no tocó ninguna colección
 ni controller. El impacto real está en el frontend (copy, textos de
 marketing) — ver ARQUITECTURA_FRONTEND.md.
 
-## Estructura real de planes (aclarado 13/08/2026)
+## Reestructuración de planes: Fundación/Estándar/VIP + colección `Plan` (07/09/2026)
 
-Un solo curso teórico (4 sesiones, igual para todas) con **dos variantes
-de práctica de manejo**: `normal` y `vip` — la diferencia es solo en la
-práctica (más personalizada, más tiempo con el instructor en el plan
-VIP), no en el contenido teórico. Esto ya estaba modelado así desde antes
-en `Inscripcion.tipoPlan` (`enum: ["normal", "vip"]`); lo nuevo es que
-ahora también se muestra en el home público (ver
-ARQUITECTURA_FRONTEND.md), leyendo los mismos precios de
-`GET /api/configuracion` que ya usaba `/inscripcion`.
+Reemplaza la sección anterior (2 planes, precios en `Configuracion`).
+Ahora son **3 planes** dentro del programa `estandar` (Fundación, Normal
+→ renombrado a Estándar, VIP), cada uno con datos reales de práctica, no
+solo precio — nueva colección `Plan` (ver DATABASE.md para el schema
+completo y la tabla de precios/sesiones/costos actual).
+
+- **`GET /api/planes?programa=estandar`** (público) — lista los planes
+  activos de un programa, default `"estandar"`. Lo consumen tanto el
+  Home (resumen: nombre + precio + frase destacada) como `/inscripcion`
+  (detalle completo: sesiones de práctica, duración, costo de
+  combustible, características).
+- **`GET /api/planes/:codigo?programa=estandar`** (público) — detalle de
+  un plan.
+- **`GET /api/planes/admin/todos?programa=estandar`** (solo admin) —
+  igual que el listado público pero incluye los planes con
+  `activo: false`, para que la UI de admin pueda reactivarlos.
+- **`PATCH /api/planes/:codigo?programa=estandar`** (solo admin) — edita
+  cualquier campo del plan excepto `codigo`/`programa`. La consume la
+  pantalla nueva `admin/planes/page.tsx` (ver ARQUITECTURA_FRONTEND.md).
+- `Inscripcion.tipoPlan` pasó de `["normal","vip"]` a
+  `["fundacion","normal","vip"]`.
+- **NUEVO campo `programa`** en `Plan` e `Inscripcion` (`String, default:
+"estandar"`, sin enum cerrado): se agregó en esta misma sesión, antes
+  de que existiera ningún documento real de `Plan`, específicamente para
+  no tener que migrar después — la fundadora confirmó que además de
+  Escolar/Empresarial ya viene un cuarto programa (Motorista). `programa`
+  (currículo) queda separado de `tipoPlan` (nivel de práctica/precio
+  dentro de ese currículo). Ver `ESPECIFICACION_PROGRAMAS_NUEVOS.md` para
+  el diseño completo de los programas nuevos — todavía no construidos.
+- `scripts/migrarPlanes.js` (nuevo) — siembra/actualiza los 3 planes
+  (upsert por `{programa, codigo}`) y reetiquetó las inscripciones viejas
+  `tipoPlan: "normal"` a `"fundacion"` (0 documentos migrados en la
+  práctica, no quedaba ninguna inscripción real al momento de correrlo).
+- `configuracionController.js`: `DEFAULTS` ya no incluye
+  `precio_plan_normal`/`precio_plan_vip` — esos registros quedan
+  huérfanos en Atlas (no se borraron) pero ningún endpoint los lee.
 
 ## Autenticación y roles
 
@@ -485,6 +513,18 @@ scope `workflow` incluido evita este paso extra.
   — las 4 sesiones existen con títulos provisionales. Este cambio no se
   había registrado formalmente en la versión anterior de este documento;
   queda corregido aquí.
+- **`purgarUsuariosPrueba.js` (NUEVO, 07/09/2026)**: segunda purga,
+  distinta de `purgarDatosPrueba.js` — borra todos los usuarios excepto
+  `maria@test.com` sin importar rol, con cascada actualizada
+  (`TestPsicologico`, `Instructor`, que no existían en el script viejo),
+  y **no toca** `Sesion`/`Examen`/`ContenidoSesion`. Corrido en modo real
+  el 07/09/2026 — ver DATABASE.md para el detalle de lo borrado.
+- **`migrarPlanes.js` (NUEVO, 07/09/2026)**: siembra/actualiza los 3
+  documentos de `Plan` y reetiqueta inscripciones viejas
+  `tipoPlan: "normal"` → `"fundacion"`. Correrlo de nuevo (con
+  `--confirmar`) es la forma correcta de actualizar precios/nombres de
+  plan en bloque — aunque para cambios puntuales ya es más simple usar
+  la UI de admin (`admin/planes`, ver ARQUITECTURA_FRONTEND.md).
 
 ## Notas de diseño
 
@@ -523,12 +563,23 @@ scope `workflow` incluido evita este paso extra.
   actualizar/agregar el registro correspondiente.
 - Terminar Telegram para el celular de la fundadora (`chat_id`) — sería
   el canal de respaldo si algún correo de Resend llegara a fallar.
-- **NUEVO:** no existe una UI de admin para editar `Configuracion`
-  (`precio_plan_normal`/`precio_plan_vip`) — hoy se cambian a mano en
-  Atlas. Ahora que el precio también se muestra en el home público, un
-  cambio de precio mal hecho ahí se refleja directo en el sitio; vale la
-  pena construir un formulario simple en el panel de admin en algún
-  momento.
+- **RESUELTO (07/09/2026):** ya existe UI de admin para editar planes
+  (`admin/planes`, ver ARQUITECTURA_FRONTEND.md) — sigue pendiente la
+  misma UI para el resto de `Configuracion` (lo que no sea precio de
+  plan).
+- **NUEVO (07/09/2026), ALTA PRIORIDAD PARA LA PRÓXIMA SESIÓN:**
+  construir los programas Escolar, Empresarial y Motorista. El diseño
+  completo ya está acordado con el usuario a lo largo de varias
+  conversaciones — está consolidado en `ESPECIFICACION_PROGRAMAS_NUEVOS.md`
+  para no tener que volver a analizarlo. Resumen de lo que falta:
+  colección `Grupo` (colegio/empresa), campo `grupoId` en `User`,
+  formularios de creación de grupo + roster separados, prorrateo de
+  `precioAcordado` en `MovimientosContables`, cuestionario informativo
+  para Escolar (reemplaza el test psicológico completo), gate del
+  diploma sin práctica para Escolar/Empresarial, y el cron de reporte
+  diario a las 10am que termina cuando todos los estudiantes del grupo
+  completan el curso. Motorista todavía no se diseñó a este nivel de
+  detalle — queda como el primer punto a definir en la próxima sesión.
 - Decidir si vale la pena construir `POST /sesiones` (crear sesión desde
   el panel) o si el script de terminal es suficiente a largo plazo.
 - Recordatorios por correo (examen disponible / voucher sin seguimiento):

@@ -1,6 +1,6 @@
 # Arquitectura del Frontend — mav-rd-frontend
 
-> Refleja el estado REAL del código al 06/09/2026. Reemplaza la versión
+> Refleja el estado REAL del código al 07/09/2026. Reemplaza la versión
 > anterior de este mismo archivo. Para el historial de cómo se llegó aquí,
 > ver HISTORIAL_MODIFICACIONES.md.
 
@@ -42,14 +42,16 @@ tocado hasta ahora; **siguen pendientes de revisar** `testimonios/page.tsx`,
 `registro/page.tsx`, correos transaccionales del backend, y las fotos de
 `public/inscripcion/` (de clases anteriores, probablemente solo mujeres).
 
-## Estructura real de planes (aclarado 13/08/2026)
+## Estructura real de planes (reestructurado 07/09/2026)
 
-Un solo curso teórico (igual para todas), con dos variantes de práctica
-de manejo: **Normal** y **VIP**. La diferencia entre ambos es
-exclusivamente cuánta atención personalizada y tiempo con el instructor
-se recibe en la práctica — no hay diferencia en el contenido teórico.
-Este matiz ahora se refleja tanto en `/inscripcion` (ya existía) como en
-la nueva sección de precios del home (ver abajo).
+Un solo curso teórico (igual para todas dentro del programa `estandar`),
+con **3 variantes de práctica de manejo**: Fundación (grupal, la más
+accesible), Estándar (antes "Normal") e VIP. La diferencia entre los 3
+es exclusivamente cuánta atención personalizada y tiempo con el
+instructor se recibe en la práctica — no hay diferencia en el contenido
+teórico. Reemplaza la versión de 2 planes (Normal/VIP) descrita antes en
+este documento — ver la sección "Home — Planes y Precios" más abajo para
+el detalle del cambio.
 
 ## Estructura de carpetas (real)
 
@@ -304,30 +306,57 @@ con lo que Muvo ofrece (curso para principiantes) y podría atraer
 tráfico que rebota rápido. Se mantuvo el lenguaje ya usado en el sitio
 ("aprender a manejar", "escuela de manejo", "examen del INTRANT").
 
-## NUEVO: Home — sección de Planes y Precios (13/08/2026)
+## Home — sección de Planes y Precios (rediseñada 07/09/2026)
 
-`app/page.tsx` pasó de ser un componente cliente-friendly estático a un
-**componente servidor async** — hace `fetch` a `GET /api/configuracion`
-con `cache: "no-store"` (el precio puede cambiar sin un nuevo deploy) y
-renderiza dos tarjetas, Normal y VIP, con:
+Reemplaza la versión del 13/08/2026 (2 tarjetas, precio leído de
+`GET /api/configuracion`). Ahora:
 
-- Precio real (`precio_plan_normal`/`precio_plan_vip`), con "Consultar"
-  como fallback si la llamada a `/configuracion` falla.
-- Copy de venta explícito (no solo descriptivo) — iterado varias veces en
-  esta sesión con el usuario hasta llegar a una versión más comercial:
-  "Sal manejando con confianza. Tú eliges cómo llegar ahí" + un párrafo
-  que vende teoría + instructores + atención personalizada en la
-  práctica.
-- Lista de características por plan y CTA "Empezar con este plan" hacia
-  `/registro`.
+- `app/page.tsx` sigue siendo componente servidor async, pero hace
+  `fetch` a `GET /api/planes` (no `/configuracion`) con `cache: "no-store"`.
+- Renderiza **3 tarjetas** (Fundación/Estándar/VIP), generadas
+  dinámicamente con `.map()` sobre la respuesta — agregar o quitar un
+  plan, o cambiar su nombre/precio/frase, no requiere tocar este
+  archivo, solo editar el dato en `/admin/planes`.
+- El Home ahora es **solo resumen**: nombre, precio y una frase
+  destacada corta por plan (`Plan.fraseDestacada`), con un botón "Ver
+  detalles del plan" hacia `/inscripcion` (antes el CTA iba directo a
+  `/registro` y el Home mostraba la lista completa de características —
+  esa lista ahora vive solo en `/inscripcion`, decisión explícita del
+  usuario para no duplicar el detalle en dos páginas).
+- VIP se marca visualmente como destacado (`plan.codigo === "vip"`) en
+  vez de un campo `destacado` hardcodeado como antes.
 
-También se agregó un banner (`bg-brand-blue`, sección completa) hacia
-`/empresas` entre Testimonios y el CTA final.
+`/inscripcion` (`app/inscripcion/page.tsx`) también se actualizó: el
+`fetch` inicial pasó de `/configuracion` a `/planes`, el tipo `Precios`
+se reemplazó por un tipo `Plan` completo, las 2 tarjetas de comparación
+hardcodeadas pasaron a 3 tarjetas generadas con `.map()` (mostrando
+duración/cantidad de sesiones de práctica y costo de combustible por
+plan, además de `caracteristicas`), y el `<select>` del formulario de
+inscripción ahora itera sobre los planes recibidos en vez de tener 2
+`<option>` fijas.
 
-Inspirado en el análisis de la competencia (academiavial.com) — se tomó
-la idea de mostrar precios desde el inicio, pero **no** se replicó su
-estructura de múltiples "programas": Muvo vende un solo curso con dos
-variantes de práctica, no un catálogo.
+## NUEVO: Panel de admin — Planes y precios (07/09/2026)
+
+`app/(admin)/admin/planes/page.tsx` — pantalla protegida con
+`RutaProtegida rolesPermitidos={["admin"]}`, accesible desde una tarjeta
+nueva en `panel/page.tsx` (grupo "Solo fundadora", ícono `DollarSign`).
+Carga los 3 planes vía `GET /api/planes/admin/todos` (incluye inactivos,
+a diferencia del endpoint público) y muestra un formulario editable por
+plan: nombre, precio, frase destacada, modalidad de práctica, duración y
+cantidad de sesiones, costo de combustible, características (textarea,
+una por línea) y un checkbox de "Visible en el sitio" (`activo`). Cada
+plan se guarda de forma independiente vía
+`PATCH /api/planes/:codigo`. Resuelve el pendiente de tener que editar
+precios a mano en Atlas o vía Postman.
+
+Inspirado en el patrón visual ya existente de
+`(conductor)/practica/page.tsx` (tarjetas blancas, mensajes de
+éxito/error inline) — no se introdujo ningún componente ni librería
+nueva.
+
+**Nota histórica preservada:** el banner hacia `/empresas` entre
+Testimonios y el CTA final del Home (agregado 13/08/2026) sigue igual,
+sin cambios en este rediseño.
 
 ## NUEVO: Home — promoción del libro de la fundadora + colores nuevos (sesión sin documentar, confirmado 28/08/2026)
 
@@ -504,3 +533,10 @@ visible → chofer aprueba → diploma generable.
   instructor (hoy la estudiante contacta directo, sin asignación),
   revisar `PantallaListaParaPractica` en `dashboard/page.tsx` — hoy
   asume que siempre se muestra la lista completa de choferes activos.
+- **NUEVO (07/09/2026), ALTA PRIORIDAD PARA LA PRÓXIMA SESIÓN:** todo el
+  frontend de Escolar/Empresarial/Motorista — formularios de creación de
+  grupo y roster, cuestionario informativo de Escolar,
+  dashboard/aula virtual condicionados por `programa` (hoy asumen un
+  solo currículo). Diseño completo en
+  `ESPECIFICACION_PROGRAMAS_NUEVOS.md`, nada de esto empezado en código
+  todavía.
