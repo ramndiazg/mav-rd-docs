@@ -1,0 +1,148 @@
+# Resumen de sesión — Paso 1 y 2 de Programas Nuevos (Escolar/Empresarial)
+
+> Generado el 08-09/09/2026. Este documento es un resumen de continuidad
+> para la próxima sesión — fusionar lo relevante en
+> ARQUITECTURA_BACKEND.md, ARQUITECTURA_FRONTEND.md, DATABASE.md e
+> HISTORIAL_MODIFICACIONES.md, y luego se puede borrar este archivo.
+> Contexto completo del proyecto en ESPECIFICACION_PROGRAMAS_NUEVOS.md.
+
+## Qué se construyó en esta sesión
+
+Se completaron **el paso 1 (Grupo + gate de práctica condicional)** y
+**el paso 2 (cuestionario InformacionComplementariaEscolar + su gate)**
+de los 6 pasos identificados al inicio. Todo el código fue escrito y
+el usuario confirma que ya está comiteado en ambos repos (ver commits
+de abajo). **Todavía no se ha probado en Render/Vercel** — eso es lo
+primero que hay que hacer en la próxima sesión.
+
+### Backend (mav-rd-backend) — 10 archivos, commit pendiente de confirmar en Render
+
+- `src/models/Grupo.js` **(nuevo)** — colección `Grupo` completa según
+  especificación (tipo, institución, contacto, precioAcordado,
+  cantidadEstudiantesEstimada, fechaInicio, pendienteRoster, activo,
+  notas, creadoPor).
+- `src/models/User.js` **(modificado)** — campo `grupoId` nuevo (ref
+  `Grupo`, default `null`).
+- `src/models/InformacionComplementariaEscolar.js` **(nuevo)** — 12
+  preguntas de escala 1-5 + 2 abiertas. **El nombre de esta colección
+  sigue sin confirmar con la fundadora** (pendiente de la
+  especificación original, sección 5 punto 2).
+- `src/controllers/informacionComplementariaEscolarController.js`
+  **(nuevo)** — mismo patrón que `testPsicologicoController.js`
+  (enviarMiRespuesta, obtenerMiEstado, listarRespuestas,
+  obtenerRespuestaPorUsuario).
+- `src/routes/informacionComplementariaEscolarRoutes.js` **(nuevo)** —
+  mismas reglas de permisos que `testPsicologicoRoutes.js`.
+- `src/app.js` **(modificado)** — registrada la ruta nueva en
+  `/api/informacion-complementaria-escolar`.
+- `src/controllers/diplomaController.js` **(modificado)** — gate de
+  elegibilidad (`listarElegibles`, `generarDiploma`) ahora condiciona
+  `practicaAprobada` a `!usuario.grupoId`. Mensajes de error
+  diferenciados según el caso.
+- `src/controllers/intentoExamenController.js` **(modificado)** — en
+  `entregarIntento`, la notificación `notificarEstudianteListaParaPractica`
+  ya no se dispara si `req.usuario.grupoId` existe.
+- `src/controllers/sesionController.js` **(modificado)** —
+  `obtenerSesionParaEstudiante` ahora exige `InformacionComplementariaEscolar`
+  en vez de `TestPsicologico` cuando el `Grupo` del estudiante es
+  `tipo: "colegio"`. Empresarial (`tipo: "empresa"`) sigue exigiendo
+  `TestPsicologico` igual que el flujo estándar.
+- `src/controllers/authController.js` **(modificado)** — nueva función
+  `conGrupoTipo()` que agrega el campo `grupoTipo` (`"colegio" |
+"empresa" | null`) a las respuestas de `login`, `perfil` y `registro`,
+  consultando `Grupo.tipo` a partir de `usuario.grupoId`. Se confirmó
+  que el middleware `protegerRuta` no filtra `grupoId` con `.select()`,
+  así que `req.usuario.grupoId` llega completo sin ajustes adicionales.
+
+### Frontend (mav-rd-frontend) — 5 archivos
+
+- `contexts/AuthContext.tsx` **(modificado)** — tipo `Usuario` con
+  `grupoId: string | null` y `grupoTipo: "colegio" | "empresa" | null`.
+- `components/dashboard/ProgresoCarretera.tsx` **(modificado)** —
+  nuevo prop `requierePractica` (default `true`). Cuando es `false`,
+  oculta la parada "Práctica" y recalcula las posiciones X para 6
+  paradas en vez de 7 (no deja un hueco vacío).
+- `app/dashboard/page.tsx` **(modificado)** — calcula
+  `requierePractica = !usuario?.grupoId` y `esEscolar =
+usuario?.grupoTipo === "colegio"`. Usa `esEscolar` para decidir qué
+  endpoint de cuestionario pedir (`informacion-complementaria-escolar`
+  vs `test-psicologico`). Nueva pantalla `PantallaTeoriaCompletadaGrupo`
+  (texto propio, sin mencionar instructores/práctica) para estudiantes
+  de grupo con `cursoCompletado: true`.
+- `lib/bancoPreguntasEscolar.ts` **(nuevo)** — 12 preguntas de escala +
+  2 abiertas. **IMPORTANTE: el texto exacto de las 14 preguntas es una
+  PROPUESTA de Claude siguiendo los ejes/cantidades de la
+  especificación (4+3+3+2 de escala, 2 abiertas) — el wording literal
+  no ha sido confirmado por la fundadora.** Revisar antes de usar con
+  estudiantes reales, junto con el pendiente legal de Ley 172-13 que ya
+  existía en la especificación.
+- `app/informacion-complementaria-escolar/page.tsx` **(nuevo)** —
+  formulario calcado de `test-psicologico/page.tsx`, con el banco de
+  preguntas y los endpoints propios de Escolar.
+
+## Decisiones de diseño tomadas durante la sesión (no volver a preguntar)
+
+- `Grupo.cantidadEstudiantesReal` **no existe como campo** — se deriva
+  contando `User.find({ grupoId })`, para no duplicar un número que se
+  pueda desincronizar del roster real.
+- `Grupo.contactoEmail` **no tiene `unique`** (a diferencia de
+  `User.email`) — una misma institución puede repetirse en dos grupos
+  distintos (ej. mismo colegio, dos años seguidos).
+- Pantalla para estudiante de Grupo con teoría completa pero diploma
+  aún no generado: **pantalla nueva con texto propio**
+  (`PantallaTeoriaCompletadaGrupo`), decisión explícita del usuario —
+  NO reusar `PantallaPracticaAprobada` tal cual, para no mencionar
+  práctica/instructores a quien nunca le aplica.
+- Método elegido para que el frontend sepa el tipo de grupo: **el
+  backend calcula y devuelve `grupoTipo` en login/perfil** (no un
+  fetch aparte a `/grupos/:id`), decisión explícita del usuario.
+
+## Bug encontrado al probar (NO relacionado con el trabajo de esta sesión)
+
+Al probar el flujo, el usuario encontró un error **preexistente** en
+el formulario de inscripción individual (`/inscripcion`, plan
+"Fundación"): al enviar el comprobante con el plan
+"Plan de la Fundación Mujeres al Volante — RD$1,000" seleccionado, el
+backend responde `tipoPlan debe ser "normal" o "vip"`. Esto sugiere que
+el enum de `tipoPlan` en el modelo de `Inscripcion` (o la validación
+del controller de inscripción) no incluye `"fundacion"` como valor
+válido, aunque el frontend sí lo ofrece como opción seleccionable y el
+propio esquema de `Inscripcion.js` que vimos en esta sesión tiene
+`tipoPlan: { enum: ["fundacion", "normal", "vip"], ... }` — o sea el
+modelo sí lo permite, así que el bug probablemente está en otro punto
+de la validación (¿un middleware, un `Joi`/`zod` schema aparte, o el
+controller de inscripción mismo?). **Pendiente investigar en la
+próxima sesión** — no se tocó ningún archivo de inscripción individual
+en este bloque de trabajo, así que no es una regresión introducida por
+los cambios de Grupo.
+
+## Otro hallazgo (esperado, no es un bug)
+
+El usuario notó que no hay forma de seleccionar o crear un "plan
+grupal" al inscribirse — solo aparecen los 3 planes individuales. Esto
+es **esperado**: el Formulario 1/Formulario 2 de inscripción de grupo
+(sección 3 de ESPECIFICACION_PROGRAMAS_NUEVOS.md) es el **paso 5** de
+los 6 pasos totales y todavía no se ha construido. Grupo hoy solo se
+puede crear a mano en MongoDB (Atlas/Compass) para pruebas.
+
+## Qué falta (pasos 3-6 de la especificación original)
+
+1. **Paso 3** — Prorrateo contable (`MovimientosContables` al confirmar
+   roster).
+2. **Paso 4** — Formularios de inscripción de grupo (2 pasos: datos del
+   grupo, luego roster con carga CSV/pegado).
+3. **Paso 5** — Cron de reporte diario (adaptar patrón de
+   `resumenDiario.js`, 10am RD, termina solo).
+4. **Paso 6** — Los pendientes ya conocidos de la especificación
+   original: diseño de Motorista, confirmar nombre de la colección
+   `InformacionComplementariaEscolar`, revisión legal de las 14
+   preguntas, decidir si `Sesion` necesita campo `programa`, decidir si
+   `Plan` necesita entradas para Escolar/Empresarial.
+
+## Próximo paso inmediato
+
+Antes de seguir construyendo: **probar todo el bloque de Grupo en
+Render/Vercel** (crear un `Grupo` de prueba a mano en MongoDB, asignar
+`grupoId` a una estudiante de prueba, y verificar el flujo completo de
+gate de práctica + cuestionario Escolar). Ninguna de las pruebas
+listadas en el plan de pruebas de esta sesión se ha ejecutado todavía.
