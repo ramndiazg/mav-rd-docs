@@ -88,6 +88,14 @@ definidos los temas reales.
   tokenRecuperacion: String,
   tokenRecuperacionExpira: Date,
 
+  // NUEVO (08/09/2026): ref a Grupo (ver sección 22). null para
+  // autoregistro individual (flujo de siempre, sin cambios). Con valor
+  // solo para estudiantes creadas en bloque por un Grupo — determina si
+  // se le exige práctica de manejo para el diploma y cuál cuestionario
+  // previo aplica (TestPsicologico vs. InformacionComplementariaEscolar,
+  // ver sección 23).
+  grupoId: { type: ObjectId, ref: "Grupo", default: null },
+
   createdAt: Date, updatedAt: Date
 }
 ```
@@ -117,6 +125,26 @@ programas nuevos.
 estructurada entre planes — la teoría es la misma para todos los planes
 de un mismo programa, la diferencia real está en la práctica de manejo.
 Ver ARQUITECTURA_BACKEND.md para el detalle de los dos flujos de pago.
+
+**NUEVO valor de `tipoPlan` (09/09/2026): `"grupo"`.** Enum completo
+ahora `["fundacion","normal","vip","grupo"]`. Exclusivo de estudiantes
+creadas por un `Grupo` (Escolar/Empresarial, ver sección 22) — no tienen
+nivel individual de plan, el precio vive solo en `Grupo.precioAcordado`
+(prorrateado), nunca pasa por la colección `Plan`.
+
+**Bug corregido (09/09/2026): `numeroReferencia` con `default: null` +
+índice `unique, sparse`.** Un índice `sparse` en Mongo solo excluye
+documentos donde el campo está _ausente_, no donde vale `null` explícito
+— con el `default: null` que tenía el schema, cualquier `Inscripcion`
+creada sin voucher (flujo "efectivo" del admin, y cada estudiante de un
+`Grupo`) quedaba con `numeroReferencia: null` _guardado de verdad_, así
+que la segunda de esas chocaba como "duplicado" contra la primera. Se
+quitó el `default` — ahora el campo queda genuinamente `undefined`
+cuando no se manda, que el índice `sparse` sí excluye. No se tocó el
+índice en Mongo, solo lo que la app escribe. Puede quedar como máximo un
+documento viejo con `numeroReferencia: null` explícito de antes del fix
+(nunca pudo haber dos, la colisión ya lo habría impedido) — inofensivo,
+no hace falta limpiarlo a mano.
 
 ## 3. configuracion (key-value) — precios de plan DEPRECADOS (07/09/2026)
 
@@ -385,6 +413,64 @@ preparación para su examen teórico, instrucciones para el examen del
 permiso de aprendizaje, e instrucciones para el examen práctico de la
 licencia.
 
+---
+
+## 22. Grupo — NUEVA (08/09/2026)
+
+```js
+{
+  _id: ObjectId,
+  tipo: String,             // enum: 'colegio' | 'empresa'
+  nombreInstitucion: String,
+  contactoNombre: String,
+  contactoEmail: String,
+  contactoTelefono: String,
+  precioAcordado: Number,   // total negociado, se rellena a mano
+  cantidadEstudiantesEstimada: Number, // del Formulario 1, solo referencia
+  fechaInicio: Date,        // null hasta confirmar el roster — de ahí
+                             // cuentan las 24h del primer reporte diario
+  pendienteRoster: Boolean, // true hasta cargar el roster real
+  activo: Boolean,          // false cuando todas completan el curso
+                             // (automático) o a mano como respaldo
+  notas: String,
+  creadoPor: ObjectId,      // ref: users
+  createdAt: Date, updatedAt: Date
+}
+```
+
+Colegios/empresas que inscriben en bloque (programas Escolar/Empresarial
+— mismo currículo que `estandar`, sin práctica de manejo, precio único
+negociado en vez de por plan). Las instituciones nunca entran a la app;
+`User.grupoId` referencia esta colección. `cantidadEstudiantesReal` NO se
+guarda como campo — se calcula al vuelo con `User.aggregate` por
+`grupoId` cada vez que se necesita (`GET /api/grupos`), para no tener un
+número desincronizado si se agregan estudiantes tarde. Ver
+ARQUITECTURA_BACKEND.md (`grupoController.js`) para el prorrateo
+contable y el cron de reporte diario.
+
+## 23. InformacionComplementariaEscolar — NUEVA (08/09/2026)
+
+```js
+{
+  _id: ObjectId,
+  userId: ObjectId,     // ref: users, único — una por estudiante
+  respuestas: [Number],  // 12 respuestas escala 1-5
+  respuestasAbiertas: [String], // 2 respuestas de texto libre
+  createdAt: Date, updatedAt: Date
+}
+```
+
+Cuestionario informativo de 14 preguntas (12 + 2 abiertas) para
+estudiantes de Escolar (`Grupo.tipo === "colegio"`) — reemplaza a
+`TestPsicologico` solo para ellas; Empresarial sigue usando el test
+completo igual que `estandar`. Colección deliberadamente separada, no
+reusa `TestPsicologico` — preguntas sobre conocimiento vial y logística,
+sin ningún eje de autocontrol/estrés/percepción de riesgo. **Pendiente:
+revisión legal (Ley 172-13) antes de usarlo con estudiantes reales** —
+mismo pendiente que `TestPsicologico`, ver ARQUITECTURA_BACKEND.md.
+Nombre de la colección sigue sin confirmar con la fundadora (puede
+cambiar).
+
 **Historial de precios:** el plan de entrada se llamó "Normal" a
 RD$1,500 y el más completo "VIP" a RD$7,000 antes del 07/09/2026. Se
 restructuró a 3 niveles (Fundación/Estándar/VIP) el mismo día; el precio
@@ -449,12 +535,11 @@ Ver ARQUITECTURA_FRONTEND.md.
   los activos sin distinción, suficiente para la cantidad actual. Nota:
   con la purga del 07/09, hoy no hay ningún instructor activo — hace
   falta crear uno de nuevo cuando se retome la prueba de práctica.
-- **NUEVO (07/09/2026): implementar los programas Escolar, Empresarial y
-  Motorista.** El campo `programa` ya existe en `Plan` e `Inscripcion`
-  (ver arriba), pero ningún programa nuevo está construido todavía —
-  falta `Sesion`/`Examen`/`ContenidoSesion` con el campo `programa` (hoy
-  no lo tienen, son implícitamente `"estandar"`), la colección `Grupo`
-  para colegios/empresas, el cuestionario informativo de Escolar, y el
-  cron de reportes. **Ver `ESPECIFICACION_PROGRAMAS_NUEVOS.md`** — ahí
-  está todo el diseño ya acordado con el usuario, listo para construirse
-  sin tener que volver a analizarlo desde cero.
+- **CONSTRUIDO (08-09/09/2026): programas Escolar y Empresarial.**
+  Colecciones `Grupo` e `InformacionComplementariaEscolar` nuevas (ver
+  secciones 22 y 23), `User.grupoId`, `Inscripcion.tipoPlan` con el valor
+  nuevo `"grupo"`. **Motorista sigue sin diseñar** — es lo único que
+  falta de `ESPECIFICACION_PROGRAMAS_NUEVOS.md`. Tampoco se tocó
+  `Sesion`/`Examen`/`ContenidoSesion` con un campo `programa` — hoy
+  Escolar/Empresarial reusan el contenido de `estandar`, no hace falta
+  todavía.

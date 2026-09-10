@@ -361,9 +361,190 @@ ver la sección "Seguimiento de práctica de manejo" de arriba para el
 flujo completo. Sin este campo en `true`, `generarDiploma` responde 400
 aunque la teoría esté completa.
 
+## NUEVO: Programa Escolar/Empresarial — Grupo, roster, prorrateo y reporte diario (08-09/09/2026)
+
+Diseño completo consolidado en `ESPECIFICACION_PROGRAMAS_NUEVOS.md` tras
+varias sesiones de conversación con la fundadora. Construido en dos
+sesiones: 08/09 (colección `Grupo`, campo `grupoId` en `User`, gates de
+práctica/cuestionario) y 09/09 (formularios de grupo, prorrateo contable,
+cron de reporte diario). Motorista sigue sin diseñar — ver
+"Pendiente real" más abajo.
+
+- **`models/Grupo.js`** — `tipo: "colegio" | "empresa"`,
+  `nombreInstitucion`, datos de contacto, `precioAcordado` (total
+  negociado), `cantidadEstudiantesEstimada` (solo referencia, del primer
+  formulario), `pendienteRoster` (true hasta cargar el roster real),
+  `activo` (false cuando todos completan el curso o a mano), `fechaInicio`
+  (se fija al confirmar el roster, no al crear el grupo — de ahí cuentan
+  las 24h del primer reporte).
+- **`User.grupoId`** — ref a `Grupo`, `null` para autoregistro (sin
+  cambios en ese flujo). Determina si se exige práctica para el diploma y
+  cuál cuestionario previo aplica.
+- **`InformacionComplementariaEscolar`** (colección aparte, NO reusa
+  `TestPsicologico`) — 14 preguntas (12 escala 1-5 + 2 abiertas), gate en
+  `sesionController.js#obtenerSesionParaEstudiante`: si `Grupo.tipo ===
+"colegio"` exige esta colección; para todo lo demás (incluido
+  Empresarial) sigue exigiendo `TestPsicologico`. **Pendiente: revisión
+  legal del set de preguntas (Ley 172-13) antes de usarlo con estudiantes
+  reales** — ver `ESPECIFICACION_PROGRAMAS_NUEVOS.md` sección 5.
+- **Gate de práctica condicional** — `diplomaController.js`:
+  `requierePractica = !usuario.grupoId`; elegible si `cursoCompletado &&
+(!requierePractica || practicaAprobada)`. Efectos en cascada ya
+  cubiertos: `intentoExamenController.js#entregarIntento` no notifica
+  "lista para práctica" si hay `grupoId`; `ProgresoCarretera.tsx`
+  (frontend) oculta el paso de práctica. **Cascada adicional encontrada
+  el 09/09 que la sesión del 08/09 no cubrió:**
+  `practicaController.js#listarPendientes` mostraba para siempre a
+  estudiantes de Grupo en la lista de "esperando práctica" (nunca les
+  llega `practicaAprobada: true` porque no aplica) — ya filtrado con el
+  mismo criterio `!usuario.grupoId`.
+- **`controllers/grupoController.js`** + `routes/grupoRoutes.js`
+  (`/api/grupos`, exclusivo `coordinadora`/`admin`, las instituciones
+  nunca entran a la app):
+  - `POST /api/grupos` — Formulario 1: crea el `Grupo` con
+    `pendienteRoster: true`. No crea cuentas ni movimientos contables.
+  - `GET /api/grupos` — lista con `cantidadEstudiantesReal` calculada al
+    vuelo (`User.aggregate` por `grupoId`, no es un campo guardado).
+  - `GET /api/grupos/:id` — detalle + roster actual.
+  - `PATCH /api/grupos/:id` — editar; `precioAcordado`/
+    `cantidadEstudiantesEstimada` solo editables mientras
+    `pendienteRoster` sigue `true` (después ya hay contabilidad calculada
+    a partir de esos números).
+  - `POST /api/grupos/:id/roster` — Formulario 2, la pieza central:
+    - Crea una cuenta `User` por fila (`rol: "estudiante"`, `grupoId`
+      seteado, `emailVerificado: true` de entrada — estas cuentas nunca
+      pasan por el link de verificación). Una fila con error (cédula/
+      correo duplicado, campo faltante) no tumba el resto del lote — se
+      reporta en `errores[]` con el número de fila y sigue con las demás.
+    - Por cada cuenta creada: `Inscripcion` con `programa: "escolar"` o
+      `"empresarial"` (mapeado desde `Grupo.tipo`), `tipoPlan: "grupo"`
+      (**valor nuevo en el enum**, ver DATABASE.md), `estadoPago:
+"pagado"` directo (el pago se da por hecho en el Formulario 1, sin
+      pasar por la cola de verificación de voucher), `monto` = su parte
+      del prorrateo.
+    - `MovimientoContable` por estudiante (`categoria: "inscripcion"`,
+      referenciando la `Inscripcion`) con el mismo monto prorrateado.
+    - `ProgresoEstudiante` con `sesionActualDesbloqueada: 1` (mismo
+      upsert que `confirmarPago` en el flujo individual).
+    - Correo de credenciales (`enviarCorreoCredencialesGrupo`, contraseña
+      generada con `crypto.randomBytes`, sin `await` igual que el resto
+      de correos transaccionales).
+    - **Prorrateo:** `Math.floor(precioAcordado / cantidadTotal)` por
+      estudiante, el residuo del redondeo va a la primera estudiante del
+      lote. Soporta **adiciones tardías** al mismo grupo (llamar el
+      mismo endpoint otra vez después de la primera confirmación): no
+      re-prorratea retroactivamente lo ya cobrado (esos `MovimientoContable`
+      no se tocan) — recalcula el precio por estudiante usando el total
+      (existentes + nuevos) y aplica ese número solo al lote nuevo. Esta
+      regla específica para adiciones tardías **no estaba 100% cerrada en
+      la especificación** (sección 2 la deja como "no re-prorratear
+      retroactivamente" sin más detalle) — es la interpretación más
+      razonable que se tomó esta sesión, documentada con comentarios en
+      el propio `grupoController.js` por si la fundadora prefiere otra
+      regla.
+    - Si el conteo real difiere del estimado (solo en la primera
+      confirmación), la respuesta trae `discrepancia: true` — aviso no
+      bloqueante, se crea igual con la cantidad real.
+    - Al terminar la primera confirmación: `pendienteRoster: false`,
+      `fechaInicio: ahora`.
+- **`Inscripcion.tipoPlan`** — enum ampliado de `["fundacion","normal","vip"]`
+  a `["fundacion","normal","vip","grupo"]`. `"grupo"` es exclusivo de
+  estudiantes de un `Grupo`: no tienen nivel individual de plan, el precio
+  vive solo en `Grupo.precioAcordado` (nunca pasa por la colección `Plan`
+  — resuelve el punto que quedaba abierto en
+  `ESPECIFICACION_PROGRAMAS_NUEVOS.md` sección 5, punto 5, a favor de la
+  opción que ahí se marcaba como "probable").
+- **`utils/reporteGrupos.js`** + endpoint
+  `POST /api/interno/reporte-grupos` (mismo archivo `resumenRoutes.js`/
+  `resumenController.js` del resumen diario general, mismo mecanismo de
+  `x-cron-secret`) — cron aparte, **10:00 AM RD** (`cron: "0 14 * * *"` en
+  `.github/workflows/reporte-grupos.yml`, UTC). Por cada `Grupo` con
+  `activo: true` y `fechaInicio` de hace más de 24h: calcula el progreso
+  de cada estudiante (sesiones aprobadas, curso completado, diploma) y
+  manda un correo aparte a `Grupo.contactoEmail` (fan-out, no un solo
+  correo para todos los grupos). Si **todas** las estudiantes del grupo
+  tienen `cursoCompletado: true`, ese envío se marca como reporte final y
+  `Grupo.activo` pasa a `false` en la misma pasada (no vuelve a entrar
+  mañana). El toggle manual de `activo` en `PATCH /api/grupos/:id` sigue
+  disponible como respaldo.
+- **UI de coordinadora/admin** (ver ARQUITECTURA_FRONTEND.md):
+  `/panel/grupos` (listado + Formulario 1), `/panel/grupos/[id]`
+  (detalle + Formulario 2, con carga CSV/pegado y fallback fila por
+  fila), y `/panel/estudiantes` (ahora muestra de qué institución es
+  cada estudiante y permite filtrar por grupo — ver más abajo).
+
+**Desplegado y probado en producción (09/09/2026)** — se creó un grupo
+real, se cargó un roster, y salieron dos bugs que no aparecían en la
+revisión de código del sandbox (ninguno relacionado con la lógica de
+Grupo en sí, los dos eran fallas preexistentes que este flujo nuevo puso
+en evidencia por ser el primer camino del código que crea varias
+`Inscripcion` seguidas sin pasar por el flujo de voucher):
+
+1. **Bug: `numeroReferencia` con `default: null` + índice
+   `unique + sparse`.** Un índice `sparse` en Mongo solo excluye
+   documentos donde el campo está _ausente_, no donde vale `null`
+   explícito. Con `default: null` en el schema, cada `Inscripcion`
+   creada sin voucher (el flujo "efectivo" del admin, y ahora cada
+   estudiante de un `Grupo`) quedaba con `numeroReferencia: null`
+   _guardado de verdad_, así que la segunda de esas chocaba contra la
+   primera como si fuera un duplicado — error real:
+   `"Ya existe una cuenta registrada con ese numeroReferencia."` al
+   agregar una segunda estudiante a un grupo. Corregido en
+   `models/Inscripcion.js`: se quitó el `default: null` (queda
+   `undefined` cuando no se manda, que el índice `sparse` sí excluye
+   correctamente). No requirió tocar el índice en Mongo, solo lo que la
+   app escribe al crear el documento.
+2. **Mejora pedida tras la prueba: `/panel/estudiantes` no distinguía
+   individuales de estudiantes de un grupo, ni agrupaba compañeras de la
+   misma institución.** `controllers/usuarioController.js#listarUsuarios`
+   ahora acepta `?grupoId=` como filtro y hace
+   `.populate("grupoId", "nombreInstitucion tipo")`. El frontend
+   (`/panel/estudiantes`) agregó un dropdown "Filtrar por grupo" (poblado
+   desde `GET /api/grupos`) y cada fila muestra un badge con el nombre de
+   la institución (o "Plan individual" si `grupoId` es `null`). Ver
+   ARQUITECTURA_FRONTEND.md.
+
+**Pendiente de esta sesión, no bloqueante:** cuando el bug de
+`numeroReferencia` ocurrió, la fila que falló ya había pasado por
+`User.create()` exitosamente antes de que `Inscripcion.create()` fallara
+— es decir, puede haber quedado una cuenta de estudiante "huérfana" (sin
+`Inscripcion`/`MovimientoContable`/`ProgresoEstudiante`) de esa prueba en
+la base de datos real. No se limpió todavía — revisar en Mongo Atlas
+antes de reintentar con la misma cédula/correo, o simplemente borrar esa
+cuenta a mano si no se necesita.
+
+Sigue faltando: probar el cron de `/api/interno/reporte-grupos` en vivo
+(esperar 24h reales desde `fechaInicio`, o ajustar la fecha a mano en
+Mongo para forzarlo, y dispararlo desde la pestaña Actions de GitHub con
+`workflow_dispatch`) y confirmar que el correo de reporte le llega
+correctamente al contacto de la institución.
+
 ## Inscripciones y pagos
 
-Sin cambios en esta sesión.
+Sin cambios en esta sesión (fuera del bug de "fundacion" corregido más
+abajo).
+
+### Bug corregido (09/09/2026): plan "Fundación" rechazado al auto-inscribirse
+
+Cuando se reestructuraron los planes el 07/09 (ver sección de arriba),
+`Inscripcion.tipoPlan` pasó a aceptar `"fundacion"` y se creó la colección
+`Plan` para reemplazar los precios sueltos en `Configuracion`, pero
+`inscripcionController.js` se quedó con el código viejo en dos lugares:
+
+- `crearInscripcion` (admin) y `crearOReenviarInscripcionPropia`
+  (autoinscripción) seguían validando `tipoPlan` contra
+  `["normal", "vip"]` — cualquier intento de inscribirse en el plan
+  Fundación era rechazado con 400.
+- `crearOReenviarInscripcionPropia` buscaba el precio con
+  `Configuracion.findOne({ clave: "precio_plan_normal" | "precio_plan_vip" })`,
+  que ya no existe (esas llaves se migraron a `Plan`, ver nota en
+  `configuracionController.js`).
+
+Corregido: validación ahora acepta `["fundacion", "normal", "vip"]` en
+ambos lugares, y el precio se busca con
+`Plan.findOne({ codigo: tipoPlan, programa: "estandar", activo: true })`
+— mismo patrón que ya usaba `planController.js`. `Configuracion` ya no se
+importa en este archivo.
 
 ## Sistema de notificaciones (internas)
 
@@ -567,19 +748,31 @@ scope `workflow` incluido evita este paso extra.
   (`admin/planes`, ver ARQUITECTURA_FRONTEND.md) — sigue pendiente la
   misma UI para el resto de `Configuracion` (lo que no sea precio de
   plan).
-- **NUEVO (07/09/2026), ALTA PRIORIDAD PARA LA PRÓXIMA SESIÓN:**
-  construir los programas Escolar, Empresarial y Motorista. El diseño
-  completo ya está acordado con el usuario a lo largo de varias
-  conversaciones — está consolidado en `ESPECIFICACION_PROGRAMAS_NUEVOS.md`
-  para no tener que volver a analizarlo. Resumen de lo que falta:
-  colección `Grupo` (colegio/empresa), campo `grupoId` en `User`,
-  formularios de creación de grupo + roster separados, prorrateo de
-  `precioAcordado` en `MovimientosContables`, cuestionario informativo
-  para Escolar (reemplaza el test psicológico completo), gate del
-  diploma sin práctica para Escolar/Empresarial, y el cron de reporte
-  diario a las 10am que termina cuando todos los estudiantes del grupo
-  completan el curso. Motorista todavía no se diseñó a este nivel de
-  detalle — queda como el primer punto a definir en la próxima sesión.
+- **PROGRAMA ESCOLAR/EMPRESARIAL: construido y desplegado (08-09/09/2026)**
+  — colección `Grupo`, `User.grupoId`, gates de práctica/cuestionario,
+  formularios de grupo + roster, prorrateo contable, cron de reporte
+  diario, y la mejora en `/panel/estudiantes` para distinguir individual
+  vs. grupo. Ver la sección "NUEVO: Programa Escolar/Empresarial" más
+  arriba para el detalle completo, con los dos bugs que salieron en la
+  prueba real y ya se corrigieron. **Lo que sigue pendiente de todo esto:**
+  - Probar el cron de reporte diario en vivo (nunca se esperó a que
+    pasaran las 24h reales, ni se disparó a mano con `workflow_dispatch`).
+  - Limpiar la cuenta de estudiante "huérfana" que pudo haber quedado de
+    la prueba donde salió el bug de `numeroReferencia` (ver esa sección).
+  - **Motorista sigue sin diseñar** — es lo único de
+    `ESPECIFICACION_PROGRAMAS_NUEVOS.md` que no se tocó. Primer paso:
+    sostener con la fundadora la misma conversación de descubrimiento que
+    ya se tuvo para Escolar/Empresarial, sección 5 de ese documento.
+  - Confirmar con asesoría legal las 14 preguntas de
+    `InformacionComplementariaEscolar` (mismo pendiente que el test
+    psicológico completo, Ley 172-13) antes de usarlo con estudiantes
+    reales.
+  - Nombre final de la colección `InformacionComplementariaEscolar` —
+    sigue sin confirmar con la fundadora si le gusta o prefiere otro.
+  - Sin resolver todavía: si `Sesion`/`Examen`/`ContenidoSesion` de
+    Escolar/Empresarial/Motorista van a necesitar su propio currículo
+    (agregar `programa` al índice de `Sesion`) — hoy no hace falta,
+    reusan el de `estandar`, así que no hay apuro.
 - Decidir si vale la pena construir `POST /sesiones` (crear sesión desde
   el panel) o si el script de terminal es suficiente a largo plazo.
 - Recordatorios por correo (examen disponible / voucher sin seguimiento):

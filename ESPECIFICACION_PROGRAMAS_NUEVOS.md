@@ -1,12 +1,14 @@
 # Especificación: Programas Escolar, Empresarial y Motorista
 
-> Creado el 07/09/2026. Consolida el análisis y las decisiones tomadas en
-> conversación con el usuario a lo largo de varias sesiones, para que la
-> próxima sesión pueda **construir directo**, sin tener que repetir el
-> análisis de factibilidad. Si algo de aquí ya no aplica (la fundadora
-> cambió de opinión, etc.), actualiza este documento en el mismo momento
-> en que lo descubras — no lo dejes desactualizado para la siguiente
-> persona que lo lea.
+> Creado el 07/09/2026. **Actualizado el 09/09/2026: Escolar y
+> Empresarial ya están construidos y desplegados** (ver
+> ARQUITECTURA_BACKEND.md sección "Programa Escolar/Empresarial" y
+> HISTORIAL_MODIFICACIONES.md entrada 08-09/09/2026 para el detalle
+> completo de qué se construyó y qué bugs salieron). Este documento
+> queda vivo solo por **Motorista**, que sigue sin diseñarse — todo lo
+> de las secciones 1-4 de abajo describe lo que ya se construyó (útil
+> como referencia de las decisiones tomadas), no trabajo pendiente. Ve
+> directo a la sección 5 para lo que realmente falta.
 >
 > Requisito previo, ya construido: el campo `programa` (`String, default:
 "estandar"`) existe en `Plan` e `Inscripcion` desde el 07/09/2026 — ver
@@ -210,27 +212,35 @@ Mismo patrón que ya existe para `resumenDiario.js` (GitHub Action →
   vuelva a entrar en el cron del día siguiente). El toggle manual de
   `activo` sigue disponible como respaldo si quieren cortarlo antes.
 
-## 5. Lo que NO está resuelto — primeras preguntas de la próxima sesión
+## 5. Estado real al 09/09/2026 — qué falta de verdad
 
-1. **Motorista:** no diseñado. ¿Currículo distinto? ¿Práctica en moto,
-   con instructor propio? ¿Mismos 4 planes de precio o una estructura
-   distinta? Empezar por una conversación de descubrimiento con la
-   fundadora antes de asumir que aplica el mismo patrón de
-   Escolar/Empresarial.
+1. **Motorista: sigue sin diseñar.** Currículo distinto? Práctica en
+   moto, con instructor propio? ¿Mismos 4 planes de precio o una
+   estructura distinta? Empezar por una conversación de descubrimiento
+   con la fundadora antes de asumir que aplica el mismo patrón de
+   Escolar/Empresarial (que resultó ser "misma teoría, sin práctica,
+   precio negociado en bloque" — Motorista probablemente NO calza en
+   ese mismo patrón, ver sección 0).
 2. Nombre final de la colección `InformacionComplementariaEscolar` —
-   confirmar con el usuario si le gusta o prefiere otro.
+   sigue sin confirmar con la fundadora si le gusta o prefiere otro
+   (se construyó y desplegó con este nombre mientras tanto).
 3. Confirmar con asesoría legal el set final de 14 preguntas de Escolar
-   (ver nota de cautela arriba) antes de usarlo con estudiantes reales.
-4. ¿El `Sesion`/`Examen`/`ContenidoSesion` de Escolar/Empresarial/
-   Motorista reusa las mismas colecciones con un campo `programa`
-   agregado (recomendado, más simple) o son colecciones separadas? El
-   campo `programa` ya existe en `Plan`/`Inscripcion`; falta agregarlo a
-   `Sesion` (cambiando el índice único de `numero` a
-   `{programa, numero}`) el día que Escolar/Empresarial/Motorista
-   necesiten su propio currículo — hoy no lo necesitan (reusan el de
-   `estandar`), así que no hay apuro en tocar `Sesion` todavía.
-5. Definir si `Plan` necesita entradas propias para Escolar/Empresarial
-   (con `programa: "escolar"` / `"empresarial"`) o si el precio de estos
-   dos vive solo en `Grupo.precioAcordado` sin pasar por `Plan` en
-   absoluto (probable, dado que el precio es negociado, no fijo — pero
-   confirmarlo antes de construir).
+   antes de usarlo con estudiantes reales — mismo pendiente que el test
+   psicológico completo (Ley 172-13).
+4. Probar en vivo el cron de reporte diario
+   (`POST /api/interno/reporte-grupos`) — nunca se esperaron las 24h
+   reales ni se disparó a mano desde GitHub Actions.
+5. Revisar en Mongo Atlas si quedó una cuenta de estudiante huérfana de
+   la prueba real donde salió el bug de `numeroReferencia` (ver
+   ARQUITECTURA_BACKEND.md) — no se limpió todavía.
+
+**Ya resuelto, quedaba abierto en la versión anterior de este
+documento:**
+
+- `Sesion`/`Examen`/`ContenidoSesion` de Escolar/Empresarial reusan las
+  mismas colecciones de `estandar` con el campo `programa` (no hizo
+  falta tocar el índice de `Sesion` — ese cambio queda pendiente para el
+  día que algún programa sí necesite su propio currículo distinto).
+- El precio de Escolar/Empresarial vive solo en `Grupo.precioAcordado`,
+  nunca pasa por `Plan` — confirmado al construir (`Inscripcion.tipoPlan`
+  usa el valor nuevo `"grupo"` en vez de una entrada en `Plan`).

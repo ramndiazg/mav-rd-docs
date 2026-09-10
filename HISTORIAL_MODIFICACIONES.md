@@ -4,6 +4,105 @@
 > ARQUITECTURA_BACKEND.md, ARQUITECTURA_FRONTEND.md y DATABASE.md, este
 > archivo es solo un changelog, no la fuente de verdad de cómo funciona nada.
 
+## 08-09/09/2026 — Programa Escolar/Empresarial completo: Grupo, roster, prorrateo, reporte diario
+
+### Contexto de arranque
+
+Continuación directa del diseño consolidado en
+`ESPECIFICACION_PROGRAMAS_NUEVOS.md` (acordado con la fundadora a lo
+largo de varias conversaciones, ver entrada del 07/09/2026). Dos
+sesiones seguidas: el 08/09 se construyó y probó la primera mitad
+(colección `Grupo`, gates de práctica/cuestionario); el 08/09 se cortó
+antes de terminar y dejó un resumen aparte
+(`Resumen_sesion_08_09_2026_grupo___MD`) para que la sesión del 09/09
+pudiera seguir sin repetir el análisis. El 09/09 arrancó revisando ese
+bloque contra el código real (sin bugs encontrados, solo un efecto en
+cascada que se había pasado por alto), corrigió un bug no relacionado
+que salió en el camino (plan "Fundación" rechazado al inscribirse), y
+construyó el resto: formularios de grupo, prorrateo contable, y el cron
+de reporte diario.
+
+### Construido — 08/09 (pasos 1-2 de la especificación)
+
+Backend: `models/Grupo.js`, campo `User.grupoId`, colección
+`InformacionComplementariaEscolar` (14 preguntas, gate en
+`sesionController.js` según `Grupo.tipo`), gate de práctica condicional
+en `diplomaController.js` (`requierePractica = !usuario.grupoId`) con
+sus efectos en cascada en `intentoExamenController.js` (no notifica
+"lista para práctica") y `dashboard/page.tsx`/`ProgresoCarretera.tsx`
+en el frontend (ocultan el paso de práctica). Ver ARQUITECTURA_BACKEND.md
+y ARQUITECTURA_FRONTEND.md para el detalle completo.
+
+### Construido — 09/09 (pasos 3-5 de la especificación)
+
+- `controllers/grupoController.js` + `routes/grupoRoutes.js`
+  (`/api/grupos`): Formulario 1 (crear grupo), Formulario 2 (confirmar
+  roster — crea cuentas, inscripciones ya pagadas, prorrateo contable,
+  `ProgresoEstudiante`, correo de credenciales), listar/detalle/editar.
+  Soporta adiciones tardías al mismo grupo sin re-prorratear lo ya
+  cobrado.
+- `Inscripcion.tipoPlan` — nuevo valor `"grupo"`, exclusivo de
+  estudiantes de un `Grupo` (precio vive solo en `Grupo.precioAcordado`,
+  nunca pasa por `Plan`).
+- `utils/reporteGrupos.js` + `POST /api/interno/reporte-grupos` +
+  `.github/workflows/reporte-grupos.yml` — cron diario (10am RD) que
+  manda un correo de avance por grupo al contacto de la institución, y
+  apaga el grupo solo cuando todas sus estudiantes completan la teoría.
+- Frontend: `panel/grupos/page.tsx` (listado + Formulario 1) y
+  `panel/grupos/[id]/page.tsx` (Formulario 2, CSV/pegado + fila por
+  fila), tarjeta nueva en el panel principal.
+- Mejora en `panel/estudiantes/page.tsx` (pedida por el usuario después
+  de probar): badge de institución por fila + filtro por grupo, para
+  distinguir individuales de estudiantes de un `Grupo` y ver quiénes son
+  compañeras de la misma institución. `usuarioController.js` ahora
+  popula `grupoId` y acepta ese filtro.
+
+Ver ARQUITECTURA_BACKEND.md y ARQUITECTURA_FRONTEND.md para el detalle
+técnico completo de todo lo de arriba.
+
+### Errores encontrados y corregidos en el camino
+
+- **Efecto en cascada no cubierto el 08/09:**
+  `practicaController.js#listarPendientes` mostraba para siempre a
+  estudiantes de `Grupo` en la lista de "esperando práctica" (nunca les
+  llega `practicaAprobada: true`, no aplica). Corregido con el mismo
+  filtro `!usuario.grupoId` que ya tenían los otros tres puntos de la
+  cascada.
+- **Bug no relacionado con Grupo, encontrado al revisar el código:**
+  desde la reestructuración de planes del 07/09,
+  `inscripcionController.js` seguía validando `tipoPlan` contra
+  `["normal","vip"]` (rechazaba `"fundacion"`) y buscando el precio en
+  `Configuracion` (ya migrada a `Plan`). Corregido en los dos lugares
+  afectados (`crearInscripcion` y `crearOReenviarInscripcionPropia`).
+- **`react-hooks/set-state-in-effect` en las páginas nuevas de
+  `panel/grupos/`** — se me olvidó aplicar el fix (`queueMicrotask`) ya
+  usado en `panel/estudiantes/page.tsx` desde la sesión del 06/09.
+  Corregido en ambas páginas nuevas.
+- **Bug encontrado en producción, no en la revisión de código:**
+  `Inscripcion.numeroReferencia` tenía `default: null` + índice
+  `unique, sparse` — un `sparse` solo excluye documentos donde el campo
+  está _ausente_, no donde vale `null` explícito, así que la segunda
+  `Inscripcion` sin voucher (segunda estudiante de un grupo) chocaba
+  como "duplicado" contra la primera. Bug preexistente (afectaba
+  también el flujo "efectivo" del admin si se usaba más de una vez),
+  que el flujo de Grupo expuso por ser el primero en crear varias
+  inscripciones seguidas sin voucher. Corregido quitando el `default`
+  en `models/Inscripcion.js`.
+
+### Estado al cierre
+
+Desplegado en Render/Vercel y probado por el usuario: crear grupo →
+cargar roster → (salieron y se corrigieron los dos bugs de arriba) →
+agregar una segunda estudiante funcionando. **Sin probar todavía:** el
+cron de reporte diario (nunca se esperaron las 24h reales ni se disparó
+a mano desde GitHub Actions). Puede haber quedado una cuenta de
+estudiante huérfana (sin `Inscripcion`/`MovimientoContable`) de la
+prueba donde salió el bug de `numeroReferencia` — no se limpió, revisar
+en Mongo Atlas antes de reintentar con esa misma cédula/correo.
+**Motorista sigue sin diseñar** — único punto de
+`ESPECIFICACION_PROGRAMAS_NUEVOS.md` que no se tocó en ninguna de las
+dos sesiones.
+
 ## 07/09/2026 — Reestructuración de planes (Fundación/Estándar/VIP), UI de admin, purga de usuarios, y diseño completo de Escolar/Empresarial/Motorista
 
 ### Contexto de arranque
@@ -1134,6 +1233,10 @@ admin con CRUD de noticias/testimonios/FAQ/contenido de página/contabilidad.
   Protección de Datos de RD. La fundadora debe confirmarlo con
   asesoría legal antes de usarlo con estudiantes reales — no es algo
   que se pueda resolver solo con código.
+- **Cuestionario `InformacionComplementariaEscolar` (ver entrada
+  08-09/09/2026)**: mismo pendiente que el punto de arriba — set de 14
+  preguntas para estudiantes de Escolar, sin confirmación legal
+  todavía.
 
 ### ALTA PRIORIDAD (28/08/2026) — recrear contenido real de las 4 sesiones
 
@@ -1161,17 +1264,28 @@ admin con CRUD de noticias/testimonios/FAQ/contenido de página/contabilidad.
   entregado. Sería el canal de respaldo, ya no el único camino
   disponible (el correo real ya funciona).
 
-### NUEVO: Movilidad Vial Escolar — pendiente de diseño (06/09/2026)
+### NUEVO: Motorista — pendiente de diseño (08-09/09/2026)
 
-- La propietaria quiere explorar que colegios paguen el curso teórico
-  para sus estudiantes (organizados por grado y sección), quienes
-  reciben usuario/contraseña propios y un diploma gestionado por el
-  colegio. Se decidió explícitamente dejarlo para otra sesión — no
-  empezado. Puntos abiertos identificados en el análisis inicial: si
-  aplica práctica de manejo para estos estudiantes (probablemente
-  menores de edad, sin instructor asignado igual que el flujo actual),
-  y el tema de consentimiento parental/legal para menores, que no se ha
-  resuelto con la fundadora.
+- Único programa de los tres anunciados por la fundadora (Escolar,
+  Empresarial, Motorista) que sigue sin diseñar. Escolar y Empresarial
+  ya están construidos y en producción (ver entrada 08-09/09/2026). A
+  diferencia de esos dos, Motorista probablemente sí necesita currículo
+  y práctica distintos (manejar un carro y una motora no es lo mismo) —
+  primer paso: sostener con la fundadora la misma conversación de
+  descubrimiento que ya se tuvo para Escolar/Empresarial, no asumir que
+  aplica el mismo patrón.
+
+### Pendiente de la sesión 08-09/09/2026 (Grupo), sin bloqueo
+
+- Probar en vivo el cron de `/api/interno/reporte-grupos` — nunca se
+  esperaron las 24h reales desde `fechaInicio` ni se disparó a mano
+  desde la pestaña Actions de GitHub (`workflow_dispatch`).
+- Revisar en Mongo Atlas si quedó una cuenta de estudiante huérfana (sin
+  `Inscripcion`/`MovimientoContable`/`ProgresoEstudiante`) de la prueba
+  donde salió el bug de `numeroReferencia` — no se limpió todavía.
+- Confirmar con la fundadora el nombre final de la colección
+  `InformacionComplementariaEscolar` (sigue con el nombre sugerido, sin
+  confirmar).
 
 ### Corrección de documentación pendiente (sin bloqueo)
 
@@ -1229,6 +1343,14 @@ admin con CRUD de noticias/testimonios/FAQ/contenido de página/contabilidad.
   distinción (06/09/2026).
 
 ### Ya resuelto (para no volver a preguntarlo)
+
+- **Programa Escolar/Empresarial completo** (colección `Grupo`, gates de
+  práctica/cuestionario condicionales, formularios de grupo + roster,
+  prorrateo contable, cron de reporte diario, badge/filtro de grupo en
+  `/panel/estudiantes`) — construido, desplegado y probado en producción
+  el 08-09/09/2026, ver esa entrada. Pendientes reales restantes:
+  probar el cron en vivo, limpiar una posible cuenta huérfana, y
+  Motorista (ver arriba).
 
 - **Seguimiento de práctica de manejo** (choferes creados desde el
   panel de admin, notificación al completar teoría, dashboard del

@@ -496,9 +496,60 @@ Probado de punta a punta en esta sesión: crear chofer → login como
 chofer → estudiante termina teoría → notificación + lista de choferes
 visible → chofer aprueba → diploma generable.
 
-## Testing antes de cada commit importante — sin cambios
+## NUEVO: Panel de coordinadora/admin — Grupos (Escolar/Empresarial) (08-09/09/2026)
 
-## Pendiente real (frontend)
+Ver ARQUITECTURA_BACKEND.md para el detalle completo del backend
+(`Grupo`, `grupoController.js`, prorrateo, cron de reporte). Aquí, lo
+nuevo en el frontend — construido y probado en producción (con dos bugs
+que salieron en la prueba real, ver más abajo):
+
+- **`app/(coordinadora)/panel/grupos/page.tsx`** (NUEVO) — listado de
+  grupos (`GET /api/grupos`, con `cantidadEstudiantesReal` ya calculada
+  por el backend) + Formulario 1 inline (crear grupo:
+  `POST /api/grupos`). Cada grupo es un link a su detalle, con badge de
+  estado ("Falta cargar roster" / "En curso" / "Finalizado").
+- **`app/(coordinadora)/panel/grupos/[id]/page.tsx`** (NUEVO) — detalle
+  del grupo + Formulario 2 (roster: `POST /api/grupos/:id/roster`). Dos
+  modos, sin librería externa de CSV (parser manual de ~30 líneas,
+  soporta comillas estilo Excel/Sheets):
+  - **CSV/pegado** — textarea, detecta sola si la primera línea es
+    encabezado.
+  - **Fila por fila** — tabla editable, agregar/quitar filas.
+    Muestra el resultado después de enviar: cuántas se crearon, errores
+    fila por fila (correo/cédula duplicado, campos faltantes — no bloquea
+    el resto del lote), y el aviso de discrepancia estimado vs. real. El
+    mismo formulario sirve para agregar estudiantes tarde a un grupo que
+    ya inició (el backend distingue el caso, ver ARQUITECTURA_BACKEND.md).
+- **`app/(coordinadora)/panel/page.tsx`** — tarjeta nueva "Grupos"
+  (ícono `Building2`) en `MODULOS_CURSO`.
+- **`app/(coordinadora)/panel/estudiantes/page.tsx` — mejora agregada
+  tras probar en producción (09/09/2026):** antes no había forma de
+  distinguir una estudiante de plan individual de una de un `Grupo`, ni
+  de ver quiénes son compañeras de la misma institución. Ahora:
+  - Cada fila muestra un badge con el nombre de la institución
+    (🏫 colegio / 🏢 empresa) si `est.grupoId` no es `null`, o
+    "Plan individual" si lo es. Viene del backend ya populado
+    (`usuarioController.js#listarUsuarios` ahora hace
+    `.populate("grupoId", "nombreInstitucion tipo")`).
+  - Dropdown "Filtrar por grupo" (arriba de la lista, se llena con
+    `GET /api/grupos`) — al elegir una institución, la lista solo
+    muestra su roster (`GET /api/usuarios?...&grupoId=X`). Es la forma
+    en que se resolvió "ver compañeras del mismo grupo" sin romper la
+    paginación por fecha que ya tenía esta pantalla — mostrar solo un
+    grupo a la vez en vez de intentar clusterizar visualmente una lista
+    paginada y ordenada por `createdAt`.
+
+**Bugs encontrados en la prueba real (09/09/2026), ya corregidos** — ver
+ARQUITECTURA_BACKEND.md para el detalle técnico de cada uno:
+
+1. El warning de React `react-hooks/set-state-in-effect` en las dos
+   páginas nuevas de `panel/grupos/` — se me olvidó aplicar el mismo fix
+   (`queueMicrotask(() => cargar())` dentro del `useEffect`) ya usado en
+   `panel/estudiantes/page.tsx`. Corregido en ambas.
+2. Error de backend `"Ya existe una cuenta registrada con ese
+numeroReferencia."` al agregar una segunda estudiante a un grupo — no
+   era un bug del frontend, era el schema de `Inscripcion` en el
+   backend (índice `sparse` roto por un `default: null`).
 
 - Agregar la sección "Lo que aprendiste" (temas reales) a la imagen del
   diploma compartible — ya se puede hacer, los 4 temas reales existen
