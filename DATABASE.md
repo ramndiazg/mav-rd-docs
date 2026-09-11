@@ -4,7 +4,7 @@
 > mujeresalvolante.rd4sofa.mongodb.net (versión real confirmada: 8.0.29).
 > Mongoose como ODM. Todas las colecciones usan \_id (ObjectId) automático
 > y createdAt/updatedAt (timestamps automáticos de Mongoose), salvo que se
-> indique lo contrario. Refleja el estado real al 07/09/2026.
+> indique lo contrario. Refleja el estado real al 10/09/2026.
 
 ---
 
@@ -62,13 +62,25 @@ definidos los temas reales.
 
 ---
 
-## 1. users — NUEVO valor de rol "conductor" (05/09/2026)
+## 1. users — cédula ahora opcional (10/09/2026), + valor de rol "conductor" (05/09/2026)
 
 ```js
 {
   _id: ObjectId,
   nombre: String, apellido: String,
-  cedula: String,          // único
+  cedula: String,          // NUEVO (10/09/2026): ya no es `required`,
+                            // pasó a `unique + sparse` (mismo patrón
+                            // que Inscripcion.numeroReferencia). Los
+                            // menores de un Grupo tipo colegio no
+                            // tienen cédula; con `required + unique`
+                            // normal, dos estudiantes con "N/A" a mano
+                            // chocaban como duplicado. Sigue siendo
+                            // obligatoria en autoregistro
+                            // (authController.js la exige él mismo);
+                            // opcional solo en el roster de Grupo
+                            // (grupoController.js), donde además
+                            // cualquier variante de "n/a"/vacío se
+                            // guarda como undefined real, no como texto.
   telefono: String,
   email: String,           // único
   passwordHash: String,    // bcrypt
@@ -79,7 +91,11 @@ definidos los temas reales.
                             // que aprueba la práctica de manejo. Ninguno de
                             // los 4 roles tiene registro público excepto
                             // 'estudiante' — los otros 3 los crea un admin.
-  activo: Boolean,
+  activo: Boolean,          // soft delete. NUEVO (10/09/2026):
+                            // PATCH /api/usuarios/desactivar-lote
+                            // (admin) desactiva varios de una vez
+                            // (`{ ids: [...] }` → `updateMany`), para
+                            // cuando el roster de un Grupo cambia.
 
   emailVerificado: Boolean,
   tokenVerificacionEmail: String,
@@ -92,7 +108,7 @@ definidos los temas reales.
   // autoregistro individual (flujo de siempre, sin cambios). Con valor
   // solo para estudiantes creadas en bloque por un Grupo — determina si
   // se le exige práctica de manejo para el diploma y cuál cuestionario
-  // previo aplica (TestPsicologico vs. InformacionComplementariaEscolar,
+  // previo aplica (TestPsicologico vs. CuestionarioEscolar,
   // ver sección 23).
   grupoId: { type: ObjectId, ref: "Grupo", default: null },
 
@@ -129,8 +145,16 @@ Ver ARQUITECTURA_BACKEND.md para el detalle de los dos flujos de pago.
 **NUEVO valor de `tipoPlan` (09/09/2026): `"grupo"`.** Enum completo
 ahora `["fundacion","normal","vip","grupo"]`. Exclusivo de estudiantes
 creadas por un `Grupo` (Escolar/Empresarial, ver sección 22) — no tienen
-nivel individual de plan, el precio vive solo en `Grupo.precioAcordado`
-(prorrateado), nunca pasa por la colección `Plan`.
+nivel individual de plan, el precio vive solo en `Grupo.precioAcordado`,
+nunca pasa por la colección `Plan` (**decisión reconfirmada 10/09/2026**).
+
+**CAMBIO (10/09/2026): `monto` en inscripciones de `Grupo` ya es solo
+referencia interna, no contabilidad real.** Sigue calculándose igual
+que antes (prorrateo de `precioAcordado` entre el roster, residuo en la
+primera estudiante del lote) porque el campo `monto` de `Inscripcion`
+sigue siendo obligatorio, pero **ya no alimenta ningún
+`MovimientoContable`** — ver sección 22 (`Grupo`) para el detalle de la
+única entrada contable por grupo que la reemplaza.
 
 **Bug corregido (09/09/2026): `numeroReferencia` con `default: null` +
 índice `unique, sparse`.** Un índice `sparse` en Mongo solo excluye
@@ -444,11 +468,24 @@ negociado en vez de por plan). Las instituciones nunca entran a la app;
 `User.grupoId` referencia esta colección. `cantidadEstudiantesReal` NO se
 guarda como campo — se calcula al vuelo con `User.aggregate` por
 `grupoId` cada vez que se necesita (`GET /api/grupos`), para no tener un
-número desincronizado si se agregan estudiantes tarde. Ver
-ARQUITECTURA_BACKEND.md (`grupoController.js`) para el prorrateo
-contable y el cron de reporte diario.
+número desincronizado si se agregan estudiantes tarde.
 
-## 23. InformacionComplementariaEscolar — NUEVA (08/09/2026)
+**CAMBIO (10/09/2026): contabilidad de `Grupo` ya no se prorratea.**
+Antes: un `MovimientoContable` por estudiante, cada uno con su parte
+del prorrateo (`precioAcordado / cantidadTotal`). Ahora: una sola
+`MovimientoContable` por grupo, por el monto TOTAL, creada solo en la
+primera confirmación del roster (el primer pago real) — las adiciones
+tardías ya no generan ningún movimiento nuevo, porque no hay cobro
+adicional real que registrar. `Inscripcion.monto` de cada estudiante
+sigue calculándose prorrateado (ver sección 2) pero es solo referencia
+interna. Ver ARQUITECTURA_BACKEND.md (`grupoController.js`) para el
+detalle y el cron de reporte diario.
+
+**NUEVO (10/09/2026): cédula opcional para el roster.** `User.cedula`
+ahora acepta quedar sin valor (ver sección 1) — pensado para grupos
+tipo colegio con estudiantes menores sin cédula.
+
+## 23. CuestionarioEscolar — NUEVA (08/09/2026), nombre confirmado (10/09/2026)
 
 ```js
 {
@@ -465,11 +502,12 @@ estudiantes de Escolar (`Grupo.tipo === "colegio"`) — reemplaza a
 `TestPsicologico` solo para ellas; Empresarial sigue usando el test
 completo igual que `estandar`. Colección deliberadamente separada, no
 reusa `TestPsicologico` — preguntas sobre conocimiento vial y logística,
-sin ningún eje de autocontrol/estrés/percepción de riesgo. **Pendiente:
-revisión legal (Ley 172-13) antes de usarlo con estudiantes reales** —
-mismo pendiente que `TestPsicologico`, ver ARQUITECTURA_BACKEND.md.
-Nombre de la colección sigue sin confirmar con la fundadora (puede
-cambiar).
+sin ningún eje de autocontrol/estrés/percepción de riesgo. **Revisión
+legal (Ley 172-13) ya hecha y aprobada (confirmado 10/09/2026)** — puede
+usarse con estudiantes reales. Nombre de la colección confirmado con la
+fundadora el 10/09/2026: `CuestionarioEscolar` (antes provisional como
+`InformacionComplementariaEscolar`; no había documentos reales creados
+todavía, así que no hizo falta migrar nada al renombrar).
 
 **Historial de precios:** el plan de entrada se llamó "Normal" a
 RD$1,500 y el más completo "VIP" a RD$7,000 antes del 07/09/2026. Se
@@ -484,7 +522,8 @@ Ver ARQUITECTURA_FRONTEND.md.
 
 ## Índices recomendados — sin cambios excepto 1 nuevo
 
-- users: único en cedula y email.
+- users: único en email; único (sparse) en cedula (NUEVO, 10/09/2026 —
+  ver sección 1).
 - inscripciones: { userId }, único (sparse) en numeroReferencia.
 - intentosExamen: compuesto { userId, sesionId }.
 - diplomas: único en codigoVerificacion.
@@ -536,10 +575,13 @@ Ver ARQUITECTURA_FRONTEND.md.
   con la purga del 07/09, hoy no hay ningún instructor activo — hace
   falta crear uno de nuevo cuando se retome la prueba de práctica.
 - **CONSTRUIDO (08-09/09/2026): programas Escolar y Empresarial.**
-  Colecciones `Grupo` e `InformacionComplementariaEscolar` nuevas (ver
+  Colecciones `Grupo` y `CuestionarioEscolar` nuevas (ver
   secciones 22 y 23), `User.grupoId`, `Inscripcion.tipoPlan` con el valor
-  nuevo `"grupo"`. **Motorista sigue sin diseñar** — es lo único que
-  falta de `ESPECIFICACION_PROGRAMAS_NUEVOS.md`. Tampoco se tocó
-  `Sesion`/`Examen`/`ContenidoSesion` con un campo `programa` — hoy
-  Escolar/Empresarial reusan el contenido de `estandar`, no hace falta
-  todavía.
+  nuevo `"grupo"`. **Decisiones de arquitectura cerradas el 10/09/2026:**
+  `Sesion`/`Examen`/`ContenidoSesion` no se van a duplicar por programa —
+  se les agregará un campo `programaContenido` (`estandar`/`motorista`/
+  `pesados`, todavía no implementado en código) cuando se construyan
+  Motorista/Pesados; Escolar/Empresarial no necesitan nada nuevo aquí,
+  siguen reusando el contenido de `estandar`. **Motorista y — nuevo,
+  10/09/2026 — Pesados (conductores de camiones y trailers) siguen sin
+  diseñar** — es lo único que falta de la lista de programas.

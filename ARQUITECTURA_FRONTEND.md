@@ -1,6 +1,6 @@
 # Arquitectura del Frontend — mav-rd-frontend
 
-> Refleja el estado REAL del código al 07/09/2026. Reemplaza la versión
+> Refleja el estado REAL del código al 10/09/2026. Reemplaza la versión
 > anterior de este mismo archivo. Para el historial de cómo se llegó aquí,
 > ver HISTORIAL_MODIFICACIONES.md.
 
@@ -57,10 +57,10 @@ el detalle del cambio.
 
 mav-rd-frontend/
 ├── app/
-│ ├── page.tsx # Inicio — Planes/precios (13/08) + banner Empresas (13/08) + promo libro de la fundadora, colores brand-yellow/brand-mamey nuevos (sesión sin documentar, confirmado 28/08/2026)
+│ ├── page.tsx # Inicio — Planes/precios (13/08) + banner Empresas (13/08) + promo libro de la fundadora, colores brand-yellow/brand-mamey nuevos (sesión sin documentar, confirmado 28/08/2026) + hero y tarjeta "Así empezamos" editables desde /admin/contenido-pagina (CORREGIDO 10/09/2026, ver sección de bugs abajo — antes no leía /api/contenido)
 │ ├── sitemap.ts # NUEVO (documentado 28/08/2026, existía desde antes sin registrar) — SITE_URL corregido al dominio propio
 │ ├── robots.ts # NUEVO (documentado 28/08/2026, existía desde antes sin registrar) — SITE_URL corregido, ya no bloquea /inscripcion por error
-│ ├── empresas/page.tsx # NUEVO (13/08/2026) — programa empresarial, informativo + formulario
+│ ├── empresas/page.tsx # NUEVO (13/08/2026) — programa empresarial, informativo + formulario. Campo honeypot "sitioWeb" (sin Turnstile, ver sección de seguridad abajo)
 │ ├── acerca-de-nosotros/page.tsx
 │ ├── kit-preparacion/page.tsx
 │ ├── noticias/page.tsx
@@ -68,8 +68,8 @@ mav-rd-frontend/
 │ ├── testimonios/page.tsx # sin revisar — lenguaje de género pendiente
 │ ├── faq/page.tsx # confirmado sin cambios necesarios
 │ ├── verificar-diploma/page.tsx
-│ ├── login/page.tsx # redirige por rol: coordinadora/admin -> /panel/pagos, conductor -> /practica, estudiante -> /dashboard (05/09/2026)
-│ ├── registro/page.tsx # sin revisar — lenguaje de género pendiente
+│ ├── login/page.tsx # redirige por rol: coordinadora/admin -> /panel (CORREGIDO 10/09/2026, antes /panel/pagos), conductor -> /practica, estudiante -> /dashboard
+│ ├── registro/page.tsx # sin revisar — lenguaje de género pendiente. Widget de Cloudflare Turnstile + campo honeypot "sitioWeb" (construido en sesión previa, documentado 10/09/2026 — ver sección de seguridad abajo)
 │ ├── olvide-password/page.tsx
 │ ├── restablecer-password/page.tsx
 │ ├── verificar-email/page.tsx
@@ -168,6 +168,41 @@ inconsistente. Unificar en algún momento, sin urgencia.
 valores (`"estudiante" | "coordinadora" | "admin" | "conductor"`).
 `login/page.tsx` redirige a `/practica` si `rol === "conductor"`, antes
 de los casos ya existentes de coordinadora/admin y estudiante.
+
+**CORREGIDO (10/09/2026):** coordinadora/admin caían siempre en
+`/panel/pagos` al iniciar sesión, sin importar qué iban a hacer — con
+el badge de "pago nuevo" ya visible en el dashboard, no hacía falta
+forzar esa pantalla en cada login. Ahora `login/page.tsx` redirige a
+`/panel` (el dashboard). `components/layout/Navbar.tsx` tenía el mismo
+destino hardcodeado en el link del logo/panel para coordinadora/admin —
+mismo ajuste ahí.
+
+## Seguridad — Turnstile y honeypot (construido en sesión previa sin documentar, confirmado y documentado el 10/09/2026)
+
+Ver ARQUITECTURA_BACKEND.md para el diagnóstico completo (bot llenando
+`/registro` y `/empresas`) y las tres capas de protección. Del lado del
+frontend:
+
+- **`app/registro/page.tsx`** — carga el script de Cloudflare
+  (`https://challenges.cloudflare.com/turnstile/v0/api.js`) y renderiza
+  el widget `cf-turnstile` con `data-sitekey={NEXT_PUBLIC_TURNSTILE_SITE_KEY}`
+  y `data-callback="onTurnstileSuccess"` (función global que guarda el
+  token resuelto en el estado del formulario). Si la variable de entorno
+  `NEXT_PUBLIC_TURNSTILE_SITE_KEY` no está puesta (desarrollo local sin
+  configurar), el widget simplemente no se renderiza y el botón de
+  enviar no se bloquea por falta de token. Además tiene un campo
+  `sitioWeb` oculto por CSS (honeypot) en el formulario.
+- **`app/empresas/page.tsx`** — solo tiene el campo `sitioWeb` (honeypot),
+  sin widget de Turnstile — el backend tampoco lo exige ahí, el
+  formulario de contacto se protege solo con rate limit + honeypot (ver
+  ARQUITECTURA_BACKEND.md).
+- **`contexts/AuthContext.tsx`** — el tipo del payload de registro
+  incluye `sitioWeb?: string` con el comentario "siempre debe llegar
+  vacío", documentando la intención para quien lo lea después.
+
+**Variable de entorno nueva:** `NEXT_PUBLIC_TURNSTILE_SITE_KEY` (clave
+pública, va en Vercel). La clave secreta correspondiente
+(`TURNSTILE_SECRET_KEY`) vive solo en el backend (Render).
 
 ## Sesiones — 4, ya recreadas en la base de datos (13/08/2026)
 
@@ -358,6 +393,35 @@ nueva.
 Testimonios y el CTA final del Home (agregado 13/08/2026) sigue igual,
 sin cambios en este rediseño.
 
+## BUG CORREGIDO (10/09/2026): el Home no leía el contenido guardado desde `/admin/contenido-pagina`
+
+`app/(admin)/admin/contenido-pagina/page.tsx` permite editar el hero
+del Home y la tarjeta de la derecha (claves `inicio_hero_titulo`,
+`inicio_hero_texto`, `inicio_desde_texto` en la colección
+`ContenidoPagina`) desde hace tiempo — guardaba bien en Mongo vía
+`PATCH /api/contenido/:clave`, pero `app/page.tsx` **nunca hacía
+`fetch` a `/api/contenido`**: el título, el párrafo del hero y el texto
+de la tarjeta estaban escritos directo en el JSX como texto fijo. Cualquier
+cambio guardado desde el dashboard nunca se reflejaba en el sitio —
+mismo bug, en el mismo lugar, que ya se había resuelto antes en
+`app/acerca-de-nosotros/page.tsx` (que sí lee `/api/contenido`).
+
+**Corregido:** `app/page.tsx` ahora hace `fetch` a `GET /api/contenido`
+(sin caché, componente servidor async, mismo patrón que
+`acerca-de-nosotros/page.tsx`) y usa `inicio_hero_titulo`,
+`inicio_hero_texto` e `inicio_desde_texto` si existen, con el texto de
+siempre como respaldo si el backend no responde o la clave todavía no
+se ha creado.
+
+**Además, renombrado:** el título fijo de la tarjeta de la derecha
+decía "Desde 2017" — sin más contexto, tanto en la página como en el
+dashboard de contenido no se entendía a qué se refería. Es una etiqueta
+fija (no viene de `/api/contenido`, solo el párrafo debajo es
+editable), así que se cambió directo en el código a **"Así empezamos"**.
+La etiqueta correspondiente en `admin/contenido-pagina/page.tsx`
+(`'Texto de la tarjeta "Desde 2017"'`) se actualizó a
+`'Texto de la tarjeta "Así empezamos"'` para que coincida.
+
 ## NUEVO: Home — promoción del libro de la fundadora + colores nuevos (sesión sin documentar, confirmado 28/08/2026)
 
 `app/page.tsx` gana una sección entre "Planes y Precios" y
@@ -496,10 +560,10 @@ Probado de punta a punta en esta sesión: crear chofer → login como
 chofer → estudiante termina teoría → notificación + lista de choferes
 visible → chofer aprueba → diploma generable.
 
-## NUEVO: Panel de coordinadora/admin — Grupos (Escolar/Empresarial) (08-09/09/2026)
+## NUEVO: Panel de coordinadora/admin — Grupos (Escolar/Empresarial) (08-09/09/2026, cambios menores 10/09/2026)
 
 Ver ARQUITECTURA_BACKEND.md para el detalle completo del backend
-(`Grupo`, `grupoController.js`, prorrateo, cron de reporte). Aquí, lo
+(`Grupo`, `grupoController.js`, contabilidad, cron de reporte). Aquí, lo
 nuevo en el frontend — construido y probado en producción (con dos bugs
 que salieron en la prueba real, ver más abajo):
 
@@ -509,17 +573,34 @@ que salieron en la prueba real, ver más abajo):
   `POST /api/grupos`). Cada grupo es un link a su detalle, con badge de
   estado ("Falta cargar roster" / "En curso" / "Finalizado").
 - **`app/(coordinadora)/panel/grupos/[id]/page.tsx`** (NUEVO) — detalle
-  del grupo + Formulario 2 (roster: `POST /api/grupos/:id/roster`). Dos
-  modos, sin librería externa de CSV (parser manual de ~30 líneas,
-  soporta comillas estilo Excel/Sheets):
-  - **CSV/pegado** — textarea, detecta sola si la primera línea es
-    encabezado.
-  - **Fila por fila** — tabla editable, agregar/quitar filas.
-    Muestra el resultado después de enviar: cuántas se crearon, errores
+  del grupo + Formulario 2 (roster: `POST /api/grupos/:id/roster`).
+  - **CAMBIO (10/09/2026): se eliminó el modo "CSV/pegado".** Existían
+    dos modos — CSV/pegado (textarea, parser manual de ~30 líneas sin
+    librería externa) y fila por fila (tabla editable). Se quitó el
+    modo CSV a pedido explícito de la fundadora — no se entendía bien
+    (columnas por posición, sin encabezados visibles) — y quedó **solo
+    fila por fila**: tabla editable, agregar/quitar filas. Si en el
+    futuro se necesita carga masiva otra vez, mejor como CSV con
+    encabezados reales validados campo por campo, no el parser
+    posicional viejo.
+  - Muestra el resultado después de enviar: cuántas se crearon, errores
     fila por fila (correo/cédula duplicado, campos faltantes — no bloquea
     el resto del lote), y el aviso de discrepancia estimado vs. real. El
     mismo formulario sirve para agregar estudiantes tarde a un grupo que
     ya inició (el backend distingue el caso, ver ARQUITECTURA_BACKEND.md).
+  - **NUEVO (10/09/2026): columna de cédula opcional** — placeholder
+    "Dejar vacío si no tiene", para estudiantes menores de un grupo tipo
+    colegio (ver `User.cedula` en ARQUITECTURA_BACKEND.md/DATABASE.md).
+  - **NUEVO (10/09/2026): soft delete en lote.** Sección "Estudiantes ya
+    cargadas" ahora tiene un checkbox por estudiante activa (las
+    inactivas se muestran atenuadas, sin checkbox), botón "Seleccionar/
+    deseleccionar todas", y un botón "Desactivar N seleccionada(s)" que
+    pide confirmación y llama a
+    `PATCH /api/usuarios/desactivar-lote`. Pensado para cuando el roster
+    de la institución cambia. **Nota:** el endpoint es `admin`-only —
+    si la coordinadora lo usa desde aquí, va a recibir un error de
+    permiso hasta que se resuelva la inconsistencia anotada en
+    ARQUITECTURA_BACKEND.md.
 - **`app/(coordinadora)/panel/page.tsx`** — tarjeta nueva "Grupos"
   (ícono `Building2`) en `MODULOS_CURSO`.
 - **`app/(coordinadora)/panel/estudiantes/page.tsx` — mejora agregada
@@ -584,10 +665,13 @@ numeroReferencia."` al agregar una segunda estudiante a un grupo — no
   instructor (hoy la estudiante contacta directo, sin asignación),
   revisar `PantallaListaParaPractica` en `dashboard/page.tsx` — hoy
   asume que siempre se muestra la lista completa de choferes activos.
-- **NUEVO (07/09/2026), ALTA PRIORIDAD PARA LA PRÓXIMA SESIÓN:** todo el
-  frontend de Escolar/Empresarial/Motorista — formularios de creación de
-  grupo y roster, cuestionario informativo de Escolar,
-  dashboard/aula virtual condicionados por `programa` (hoy asumen un
-  solo currículo). Diseño completo en
-  `ESPECIFICACION_PROGRAMAS_NUEVOS.md`, nada de esto empezado en código
-  todavía.
+- **ACTUALIZADO (10/09/2026):** el frontend de Escolar/Empresarial ya
+  está construido (`panel/grupos/`, ver sección de arriba) — el
+  pendiente que decía "nada de esto empezado en código todavía" estaba
+  desactualizado, quedaba de antes de esas dos sesiones. Lo que sigue
+  realmente sin empezar es el frontend de **Motorista y Pesados**
+  (conductores de camiones y trailers, nuevo 10/09/2026) — dashboard/
+  aula virtual condicionados por `programaContenido` (hoy asumen un
+  solo currículo), formularios propios si terminan siendo programas
+  individuales en vez de por `Grupo`. Depende de que se diseñe primero
+  el currículo de cada uno con la fundadora (ver ARQUITECTURA_BACKEND.md).

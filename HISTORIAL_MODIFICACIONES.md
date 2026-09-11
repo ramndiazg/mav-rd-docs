@@ -4,6 +4,115 @@
 > ARQUITECTURA_BACKEND.md, ARQUITECTURA_FRONTEND.md y DATABASE.md, este
 > archivo es solo un changelog, no la fuente de verdad de cómo funciona nada.
 
+## 10/09/2026 — Seguridad documentada, cambios menores, bug del Home, y cierre de decisiones de Escolar/Empresarial/Motorista/Pesados
+
+### Contexto de arranque
+
+Entre la sesión del 09/09 y esta, hubo una sesión previa sin documentar
+donde se construyó protección contra un ataque de registro masivo de
+cuentas falsas (bot llenando `/registro` y `/empresas`). Esta sesión
+arrancó auditando ese código contra ARQUITECTURA_BACKEND.md/
+ARQUITECTURA_FRONTEND.md (no estaba registrado en ningún lado) y lo
+documentó formalmente antes de tocar nada nuevo.
+
+### Seguridad — auditada y documentada (construida en sesión previa)
+
+Cloudflare Turnstile (`utils/captcha.js`, solo en `/registro`), rate
+limiting por IP en 5 endpoints (`middleware/rateLimiters.js`) y
+honeypot (`sitioWeb`) en `/registro` y `/empresas`. Nada de esto se
+tocó en código esta sesión, solo se confirmó y se escribió en
+ARQUITECTURA_BACKEND.md/ARQUITECTURA_FRONTEND.md por primera vez.
+
+### Cambios menores pedidos por la fundadora
+
+1. **Contabilidad de `Grupo` sin prorrateo.** Antes: un
+   `MovimientoContable` por estudiante, cada uno con su parte
+   prorrateada de `precioAcordado` — muchas entradas pequeñas por el
+   mismo grupo distorsionaban el balance. Ahora: una sola
+   `MovimientoContable` por grupo, por el monto TOTAL, creada solo en
+   la primera confirmación del roster. Adiciones tardías ya no generan
+   ningún movimiento nuevo. `Inscripcion.monto` por estudiante sigue
+   prorrateado, pero ya es solo referencia interna.
+2. **Roster de grupo — se eliminó el modo "CSV/pegado".** Quedó solo
+   fila por fila (`panel/grupos/[id]/page.tsx`) — el modo CSV no se
+   entendía bien (columnas por posición, sin encabezados visibles).
+3. **Soft delete en lote de estudiantes.** `PATCH
+/api/usuarios/desactivar-lote` (nuevo, admin) + checkboxes en
+   "Estudiantes ya cargadas" (`panel/grupos/[id]/page.tsx`) para
+   desactivar varias de una vez cuando el roster de una institución
+   cambia.
+4. **Login de admin/coordinadora ya no cae en Pagos.** `login/page.tsx`
+   y `Navbar.tsx` redirigían a `/panel/pagos` — ahora van a `/panel`
+   (el dashboard). El badge de "pago nuevo" ya avisa cuando hace falta
+   revisar pagos, no había que forzar esa pantalla en cada sesión.
+5. **Cédula opcional para estudiantes sin cédula (menores).** Al crear
+   un grupo tipo colegio, escribir "N/A" en la cédula de un segundo
+   menor chocaba como duplicado — `User.cedula` tenía `unique` normal.
+   Se cambió a `unique + sparse` (mismo patrón que
+   `Inscripcion.numeroReferencia`) y `grupoController.js` ahora guarda
+   cualquier variante de "n/a"/vacío como `undefined` real, no como
+   texto. Sigue siendo obligatoria en autoregistro individual.
+
+Ver ARQUITECTURA_BACKEND.md, ARQUITECTURA_FRONTEND.md y DATABASE.md
+para el detalle técnico completo de los 5 puntos.
+
+### Bug corregido: el Home no reflejaba los cambios del dashboard de contenido
+
+`app/(admin)/admin/contenido-pagina/page.tsx` permite editar el hero y
+la tarjeta de la derecha del Home desde hace tiempo, y guardaba bien en
+Mongo — pero `app/page.tsx` nunca leía `/api/contenido`, esos textos
+estaban fijos en el JSX. Mismo bug que ya se había resuelto antes en
+`acerca-de-nosotros/page.tsx`. Corregido replicando ese mismo patrón.
+De paso, se renombró el título fijo de la tarjeta ("Desde 2017", sin
+contexto suficiente) a **"Así empezamos"**, en el código y en la
+etiqueta del campo correspondiente del dashboard.
+
+### Decisiones cerradas con la fundadora (sin tocar código, para desbloquear el diseño de Motorista/Pesados)
+
+- **Blockers de infraestructura cerrados:** dominio de Resend
+  verificado, todo corriendo — y se confirmó en código que ya existe
+  una UI de admin para editar precio/nombre/descripción de los planes
+  (`admin/planes`, existía desde el 07/09, solo faltaba cerrarlo como
+  pendiente). Solo queda abierto el `chat_id` de Telegram de la
+  fundadora.
+- **Nuevo programa: Pesados** — conductores de vehículos pesados,
+  alcance inicial limitado a camiones y trailers, currículo propio
+  distinto a "estandar" (igual que Motorista). Sin diseñar a detalle
+  todavía — se suma a la lista de diseño pendiente con la fundadora.
+- **Nombre de colección confirmado:** `CuestionarioEscolar` (no
+  `InformacionComplementariaEscolar` — no había documentos reales
+  creados, no hizo falta migrar nada).
+- **Revisión legal (Ley 172-13)** de las 14 preguntas de
+  `CuestionarioEscolar`: confirmada, aprobada.
+- **Modelo de contenido para programas con currículo propio:**
+  `Sesion`/`Examen`/`ContenidoSesion` no se van a duplicar por
+  programa — se les agregará un campo `programaContenido`
+  (`estandar`/`motorista`/`pesados`, todavía no implementado en
+  código) cuando se construyan Motorista/Pesados. Escolar/Empresarial
+  no necesitan nada nuevo aquí, siguen reusando `estandar`.
+- **`Plan` no necesita entradas para Escolar/Empresarial** — confirmado,
+  su precio vive solo en `Grupo.precioAcordado`. `Plan` sí las
+  necesitará para Motorista/Pesados el día que se inscriban
+  individualmente.
+
+Ver la entrada "Ya resuelto" al final de este documento y
+ARQUITECTURA_BACKEND.md/DATABASE.md para el detalle completo de cada
+decisión.
+
+### Pendiente nuevo, encontrado esta sesión
+
+- **Permisos inconsistentes:** `PATCH /api/usuarios/desactivar-lote`
+  (nuevo) y `PATCH /api/usuarios/:id/estado` (ya existía) son ambos
+  `admin`-only, pero la UI vive en `/panel`, al que también entra
+  `coordinadora`. Sin resolver todavía si se le abre el permiso a ella.
+- **Diseñar Motorista y Pesados en detalle con la fundadora** — es lo
+  único que falta de la lista de programas nuevos. Primer paso:
+  la misma conversación de descubrimiento que ya se tuvo para
+  Escolar/Empresarial, para cada uno.
+- Actualizar los documentos de contexto quedó para el final del bloque,
+  como de costumbre — hecho en esta misma sesión, después de probar
+  todos los cambios de código.
+
 ## 08-09/09/2026 — Programa Escolar/Empresarial completo: Grupo, roster, prorrateo, reporte diario
 
 ### Contexto de arranque
@@ -25,7 +134,7 @@ de reporte diario.
 ### Construido — 08/09 (pasos 1-2 de la especificación)
 
 Backend: `models/Grupo.js`, campo `User.grupoId`, colección
-`InformacionComplementariaEscolar` (14 preguntas, gate en
+`CuestionarioEscolar` (14 preguntas, gate en
 `sesionController.js` según `Grupo.tipo`), gate de práctica condicional
 en `diplomaController.js` (`requierePractica = !usuario.grupoId`) con
 sus efectos en cascada en `intentoExamenController.js` (no notifica
@@ -1228,15 +1337,10 @@ admin con CRUD de noticias/testimonios/FAQ/contenido de página/contabilidad.
 
 ### Pendiente de confirmación legal (no resuelto por Claude)
 
-- **Test psicológico de perfil conductual (ver entrada 05/09/2026)**:
-  probablemente califica como "dato sensible" bajo la Ley 172-13 de
-  Protección de Datos de RD. La fundadora debe confirmarlo con
-  asesoría legal antes de usarlo con estudiantes reales — no es algo
-  que se pueda resolver solo con código.
-- **Cuestionario `InformacionComplementariaEscolar` (ver entrada
-  08-09/09/2026)**: mismo pendiente que el punto de arriba — set de 14
-  preguntas para estudiantes de Escolar, sin confirmación legal
-  todavía.
+- **RESUELTO (10/09/2026):** tanto el test psicológico completo como el
+  cuestionario `CuestionarioEscolar` (14 preguntas) ya pasaron revisión
+  legal de Ley 172-13 — la fundadora confirmó que están bien. Puede
+  usarse ambos con estudiantes reales.
 
 ### ALTA PRIORIDAD (28/08/2026) — recrear contenido real de las 4 sesiones
 
@@ -1262,18 +1366,26 @@ admin con CRUD de noticias/testimonios/FAQ/contenido de página/contabilidad.
 - Terminar Telegram para el celular de la fundadora (sacar su `chat_id` y
   agregarlo en el panel de Notificaciones). Manual paso a paso ya
   entregado. Sería el canal de respaldo, ya no el único camino
-  disponible (el correo real ya funciona).
+  disponible (el correo real ya funciona). **Único blocker de
+  infraestructura que sigue abierto** al 10/09/2026 — Resend y la UI de
+  admin para precios de plan ya se cerraron, ver entrada de esa fecha.
 
-### NUEVO: Motorista — pendiente de diseño (08-09/09/2026)
+### Motorista y Pesados — pendientes de diseño (08-09/09/2026, Pesados agregado 10/09/2026)
 
-- Único programa de los tres anunciados por la fundadora (Escolar,
-  Empresarial, Motorista) que sigue sin diseñar. Escolar y Empresarial
-  ya están construidos y en producción (ver entrada 08-09/09/2026). A
-  diferencia de esos dos, Motorista probablemente sí necesita currículo
-  y práctica distintos (manejar un carro y una motora no es lo mismo) —
-  primer paso: sostener con la fundadora la misma conversación de
+- Escolar y Empresarial ya están construidos y en producción (ver
+  entrada 08-09/09/2026). **Motorista** (anunciado 06/09/2026) y
+  **Pesados** (conductores de camiones y trailers, agregado
+  10/09/2026) siguen sin diseñar — ambos probablemente necesitan
+  currículo y práctica distintos al de "estandar". Primer paso para
+  cada uno: sostener con la fundadora la misma conversación de
   descubrimiento que ya se tuvo para Escolar/Empresarial, no asumir que
-  aplica el mismo patrón.
+  aplica el mismo patrón entre ellos.
+- **Decisiones de arquitectura ya cerradas el 10/09/2026** para cuando
+  se construyan: `Sesion`/`Examen`/`ContenidoSesion` no se duplican por
+  programa, se les agrega `programaContenido` (`estandar`/`motorista`/
+  `pesados`); `Plan` sí necesitará fila propia para cada uno (se
+  inscriben individualmente, a diferencia de Escolar/Empresarial). Ver
+  entrada 10/09/2026.
 
 ### Pendiente de la sesión 08-09/09/2026 (Grupo), sin bloqueo
 
@@ -1283,9 +1395,15 @@ admin con CRUD de noticias/testimonios/FAQ/contenido de página/contabilidad.
 - Revisar en Mongo Atlas si quedó una cuenta de estudiante huérfana (sin
   `Inscripcion`/`MovimientoContable`/`ProgresoEstudiante`) de la prueba
   donde salió el bug de `numeroReferencia` — no se limpió todavía.
-- Confirmar con la fundadora el nombre final de la colección
-  `InformacionComplementariaEscolar` (sigue con el nombre sugerido, sin
-  confirmar).
+- **RESUELTO (10/09/2026):** nombre de la colección `CuestionarioEscolar`
+  confirmado con la fundadora — no se cambia.
+
+### NUEVO (10/09/2026): permisos inconsistentes en soft delete de estudiantes
+
+- `PATCH /api/usuarios/desactivar-lote` (nuevo) y
+  `PATCH /api/usuarios/:id/estado` (ya existía) son ambos `admin`-only,
+  pero la UI vive en `/panel`, al que también entra `coordinadora`. Sin
+  resolver todavía si se le abre el permiso a ella en ambos endpoints.
 
 ### Corrección de documentación pendiente (sin bloqueo)
 
@@ -1344,13 +1462,37 @@ admin con CRUD de noticias/testimonios/FAQ/contenido de página/contabilidad.
 
 ### Ya resuelto (para no volver a preguntarlo)
 
+- **Seguridad contra registro masivo de bots** (Cloudflare Turnstile,
+  rate limiting por IP en 5 endpoints, honeypot) — construida en una
+  sesión previa sin documentar, auditada y documentada formalmente el
+  10/09/2026, ver esa entrada.
+- **Bug del Home: el hero y la tarjeta "Así empezamos" no reflejaban
+  los cambios guardados desde `/admin/contenido-pagina`** — `app/page.tsx`
+  nunca leía `/api/contenido`. Corregido el 10/09/2026, ver esa entrada.
+- **Contabilidad de `Grupo` sin prorrateo** (una sola entrada contable
+  por grupo, por el monto total, en vez de una por estudiante) —
+  cambiado el 10/09/2026 a pedido de la fundadora, ver esa entrada.
+- **Cédula opcional para estudiantes sin cédula** (menores de un grupo
+  tipo colegio) y **soft delete en lote** de estudiantes — resuelto el
+  10/09/2026, ver esa entrada.
+- **Login de admin/coordinadora caía siempre en Pagos** — corregido el
+  10/09/2026, ahora cae en el dashboard del panel.
+- **Nombre de la colección `CuestionarioEscolar` confirmado**, y
+  **revisión legal (Ley 172-13)** tanto del test psicológico completo
+  como del cuestionario Escolar — ambas cerradas el 10/09/2026.
+- **Blockers de infraestructura:** dominio de Resend verificado y UI de
+  admin para precios/nombre/descripción de plan — ambos confirmados
+  cerrados el 10/09/2026 (el segundo ya existía desde el 07/09, solo
+  faltaba marcarlo como tal). Solo queda abierto el `chat_id` de
+  Telegram de la fundadora.
+
 - **Programa Escolar/Empresarial completo** (colección `Grupo`, gates de
   práctica/cuestionario condicionales, formularios de grupo + roster,
-  prorrateo contable, cron de reporte diario, badge/filtro de grupo en
-  `/panel/estudiantes`) — construido, desplegado y probado en producción
-  el 08-09/09/2026, ver esa entrada. Pendientes reales restantes:
-  probar el cron en vivo, limpiar una posible cuenta huérfana, y
-  Motorista (ver arriba).
+  contabilidad simplificada el 10/09 (ver arriba), cron de reporte
+  diario, badge/filtro de grupo en `/panel/estudiantes`) — construido,
+  desplegado y probado en producción el 08-09/09/2026, ver esa entrada.
+  Pendientes reales restantes: probar el cron en vivo, limpiar una
+  posible cuenta huérfana, y diseñar Motorista/Pesados (ver arriba).
 
 - **Seguimiento de práctica de manejo** (choferes creados desde el
   panel de admin, notificación al completar teoría, dashboard del

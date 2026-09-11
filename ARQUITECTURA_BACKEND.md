@@ -1,6 +1,6 @@
 # Arquitectura del Backend — mav-rd-backend
 
-> Refleja el estado REAL del código al 07/09/2026. Reemplaza la versión
+> Refleja el estado REAL del código al 10/09/2026. Reemplaza la versión
 > anterior de este mismo archivo. Para el historial de cómo se llegó aquí,
 > ver HISTORIAL_MODIFICACIONES.md.
 
@@ -8,6 +8,47 @@ Stack: Node.js + Express + Mongoose (MongoDB Atlas, cluster compartido
 mujeresalvolante.rd4sofa.mongodb.net, versión real 8.0.29) + JWT (sin
 cookies) + Cloudinary (archivos) + Resend (email) + Telegram Bot API
 (avisos internos) + despliegue en Render (mav-rd-backend.onrender.com).
+
+## Seguridad — ataque de registro masivo (construido en sesión previa sin documentar, confirmado y documentado el 10/09/2026)
+
+Se detectó un bot llenando repetidamente los formularios de registro
+(`/registro`) y de contacto empresarial (`/empresas`) — cuentas y leads
+falsos, cada uno disparando un correo real por Resend. Se construyeron
+tres capas, confirmadas en el código de esta sesión:
+
+- **Rate limiting por IP** (`middleware/rateLimiters.js`, paquete
+  `express-rate-limit`): `limitadorRegistro` (5 registros/hora),
+  `limitadorLogin` (15 intentos/15 min, fuerza bruta de contraseña),
+  `limitadorCorreoTransaccional` (5/hora — olvidé mi contraseña /
+  reenviar verificación), `limitadorContactoEmpresarial` (5/hora), y
+  `limitadorInterno` (20/15 min, endpoints de cron protegidos por
+  `x-cron-secret`). Depende de que Render mande bien
+  `X-Forwarded-For` (`app.set("trust proxy", ...)` en `app.js`) — un
+  atacante con muchas IPs distintas puede evadir esta capa, por eso no
+  es la única.
+- **Cloudflare Turnstile** (`utils/captcha.js`, función
+  `verificarCaptcha`) — la capa que de verdad frena un ataque
+  distribuido, porque no depende de la IP. Verifica contra
+  `https://challenges.cloudflare.com/turnstile/v0/siteverify` con la
+  variable de entorno `TURNSTILE_SECRET_KEY`. Solo está wireado en
+  `POST /api/auth/registro` (`authController.js`) — el formulario de
+  `/empresas` **no** lo usa, solo tiene rate limit + honeypot (ver
+  abajo). Si `TURNSTILE_SECRET_KEY` no está configurada, se deja pasar
+  con advertencia en consola (pensado para desarrollo local); en
+  producción (Render) **siempre debe estar puesta**. Si Cloudflare
+  mismo está caído, también se deja pasar — mismo criterio que el
+  resto del proyecto para dependencias externas no críticas.
+- **Honeypot** (`sitioWeb`) — campo oculto por CSS en el formulario
+  (invisible para una persona real, pero un bot simple que no ejecuta
+  CSS lo rellena igual). Presente en `POST /api/auth/registro` y
+  `POST /api/empresas/contacto`. Si llega con contenido, se responde
+  201 "éxito" falso (no un error) para no darle al script ninguna
+  pista de qué lo detectó, sin crear nada real. Se registra en consola
+  con IP y el correo que intentó usar.
+
+**Variable de entorno nueva:** `TURNSTILE_SECRET_KEY` (Render). El
+frontend necesita su propia clave pública, `NEXT_PUBLIC_TURNSTILE_SITE_KEY`
+— ver ARQUITECTURA_FRONTEND.md.
 
 ## Infraestructura y despliegue
 
@@ -94,10 +135,17 @@ completo y la tabla de precios/sesiones/costos actual).
 "estandar"`, sin enum cerrado): se agregó en esta misma sesión, antes
   de que existiera ningún documento real de `Plan`, específicamente para
   no tener que migrar después — la fundadora confirmó que además de
-  Escolar/Empresarial ya viene un cuarto programa (Motorista). `programa`
-  (currículo) queda separado de `tipoPlan` (nivel de práctica/precio
-  dentro de ese currículo). Ver `ESPECIFICACION_PROGRAMAS_NUEVOS.md` para
-  el diseño completo de los programas nuevos — todavía no construidos.
+  Escolar/Empresarial ya venían más programas (Motorista, y — agregado
+  10/09/2026 — Pesados, para conductores de camiones y trailers).
+  `programa` (currículo) queda separado de `tipoPlan` (nivel de
+  práctica/precio dentro de ese currículo). Ver
+  `ESPECIFICACION_PROGRAMAS_NUEVOS.md` para el diseño completo de los
+  programas nuevos — Motorista y Pesados todavía sin diseñar a detalle.
+  **Decisión cerrada (10/09/2026):** `Plan` solo necesita entradas para
+  programas públicos/individuales (`estandar` hoy, Motorista/Pesados el
+  día que se inscriban individualmente) — Escolar/Empresarial nunca se
+  muestran al público (las instituciones no entran a la app), su precio
+  vive solo en `Grupo.precioAcordado`, no necesitan fila en `Plan`.
 - `scripts/migrarPlanes.js` (nuevo) — siembra/actualiza los 3 planes
   (upsert por `{programa, codigo}`) y reetiquetó las inscripciones viejas
   `tipoPlan: "normal"` a `"fundacion"` (0 documentos migrados en la
@@ -105,6 +153,20 @@ completo y la tabla de precios/sesiones/costos actual).
 - `configuracionController.js`: `DEFAULTS` ya no incluye
   `precio_plan_normal`/`precio_plan_vip` — esos registros quedan
   huérfanos en Atlas (no se borraron) pero ningún endpoint los lee.
+
+### Decisión cerrada (10/09/2026): modelo de contenido para programas con currículo propio
+
+`Sesion`/`Examen`/`ContenidoSesion` **no se van a duplicar por
+programa**. Se les va a agregar un campo `programaContenido`
+(`estandar` | `motorista` | `pesados`, mismo espíritu que `Plan.programa`)
+— **todavía no implementado en código**, es la decisión de diseño ya
+cerrada con la fundadora, pendiente de construir cuando se diseñe
+Motorista/Pesados en detalle. Escolar y Empresarial no entran en este
+campo porque no lo necesitan: como reusan el currículo de `estandar`
+tal cual, sus estudiantes simplemente consumen las `Sesion` con
+`programaContenido: "estandar"` — no hay que crearles nada propio.
+Motorista y Pesados, cuando se diseñen, tendrían su propio conjunto de
+`Sesion`/`Examen`/`ContenidoSesion` marcado con su `programaContenido`.
 
 ## Autenticación y roles
 
@@ -130,6 +192,32 @@ recuperación de contraseña, login con rechazo por cuenta desactivada.
 
 **ACTUALIZADO (05/09/2026):** se agregó `POST /api/usuarios/conductor`
 (admin) — ver sección "Seguimiento de práctica de manejo" más abajo.
+
+**ACTUALIZADO (10/09/2026):** `User.cedula` dejó de ser `required` a
+nivel de esquema — pasó a `unique + sparse` (mismo patrón que ya se usa
+en `Inscripcion.numeroReferencia`). Motivo: los menores de un `Grupo`
+tipo colegio no tienen cédula, y escribir "N/A" a mano en cada fila
+chocaba como cédula duplicada en la segunda estudiante sin cédula (un
+índice `unique` normal sí compara dos "N/A" como iguales). Sigue siendo
+obligatoria donde corresponde — `authController.js` (autoregistro) la
+exige ella misma antes de crear el `User`; en `grupoController.js`
+(roster de `Grupo`) ahora es explícitamente opcional, y cualquier valor
+vacío o alguna variante de "n/a" se guarda como `undefined` de verdad
+(no como el texto "N/A"), para que el índice `sparse` los excluya a
+todos correctamente. Ver DATABASE.md.
+
+**NUEVO (10/09/2026): `PATCH /api/usuarios/desactivar-lote`** (admin) —
+soft delete en lote: recibe `{ ids: [...] }` y pone `activo: false` a
+todos con `User.updateMany`. Mismo mecanismo de siempre (nunca se borra
+el `User`), pensado para cuando el roster de una institución cambia y
+hay que desactivar a varias estudiantes de un `Grupo` de una sola vez
+en vez de ir una por una desde `/panel/estudiantes`. Mismo permiso que
+el toggle individual (`PATCH /:id/estado`, solo `admin`) — **nota
+pendiente:** la UI que lo consume vive en `/panel/grupos/[id]`, a la
+que también entra `coordinadora`; si ella necesita usarlo, hay que
+decidir si se abre a `coordinadora` en ambos endpoints (ver "Pendiente
+real" más abajo).
+
 El resto del controller (`listarUsuarios`, `crearCoordinadora`,
 `cambiarEstado`, `cambiarRol`) sin cambios de comportamiento.
 
@@ -366,9 +454,9 @@ aunque la teoría esté completa.
 Diseño completo consolidado en `ESPECIFICACION_PROGRAMAS_NUEVOS.md` tras
 varias sesiones de conversación con la fundadora. Construido en dos
 sesiones: 08/09 (colección `Grupo`, campo `grupoId` en `User`, gates de
-práctica/cuestionario) y 09/09 (formularios de grupo, prorrateo contable,
-cron de reporte diario). Motorista sigue sin diseñar — ver
-"Pendiente real" más abajo.
+práctica/cuestionario) y 09/09 (formularios de grupo, prorrateo contable
+—**reemplazado el 10/09/2026, ver más abajo**—, cron de reporte diario).
+Motorista y Pesados siguen sin diseñar — ver "Pendiente real" más abajo.
 
 - **`models/Grupo.js`** — `tipo: "colegio" | "empresa"`,
   `nombreInstitucion`, datos de contacto, `precioAcordado` (total
@@ -380,13 +468,16 @@ cron de reporte diario). Motorista sigue sin diseñar — ver
 - **`User.grupoId`** — ref a `Grupo`, `null` para autoregistro (sin
   cambios en ese flujo). Determina si se exige práctica para el diploma y
   cuál cuestionario previo aplica.
-- **`InformacionComplementariaEscolar`** (colección aparte, NO reusa
-  `TestPsicologico`) — 14 preguntas (12 escala 1-5 + 2 abiertas), gate en
+- **`CuestionarioEscolar`** (colección aparte, NO reusa
+  `TestPsicologico`; nombre confirmado con la fundadora el 10/09/2026 —
+  antes provisional como `InformacionComplementariaEscolar`, sin
+  documentos reales creados todavía, así que no hizo falta migrar
+  nada) — 14 preguntas (12 escala 1-5 + 2 abiertas), gate en
   `sesionController.js#obtenerSesionParaEstudiante`: si `Grupo.tipo ===
 "colegio"` exige esta colección; para todo lo demás (incluido
-  Empresarial) sigue exigiendo `TestPsicologico`. **Pendiente: revisión
-  legal del set de preguntas (Ley 172-13) antes de usarlo con estudiantes
-  reales** — ver `ESPECIFICACION_PROGRAMAS_NUEVOS.md` sección 5.
+  Empresarial) sigue exigiendo `TestPsicologico`. **Revisión legal del
+  set de preguntas (Ley 172-13) ya hecha y aprobada (confirmado
+  10/09/2026)** — puede usarse con estudiantes reales.
 - **Gate de práctica condicional** — `diplomaController.js`:
   `requierePractica = !usuario.grupoId`; elegible si `cursoCompletado &&
 (!requierePractica || practicaAprobada)`. Efectos en cascada ya
@@ -410,50 +501,54 @@ cron de reporte diario). Motorista sigue sin diseñar — ver
     `cantidadEstudiantesEstimada` solo editables mientras
     `pendienteRoster` sigue `true` (después ya hay contabilidad calculada
     a partir de esos números).
-  - `POST /api/grupos/:id/roster` — Formulario 2, la pieza central:
-    - Crea una cuenta `User` por fila (`rol: "estudiante"`, `grupoId`
-      seteado, `emailVerificado: true` de entrada — estas cuentas nunca
-      pasan por el link de verificación). Una fila con error (cédula/
-      correo duplicado, campo faltante) no tumba el resto del lote — se
-      reporta en `errores[]` con el número de fila y sigue con las demás.
-    - Por cada cuenta creada: `Inscripcion` con `programa: "escolar"` o
-      `"empresarial"` (mapeado desde `Grupo.tipo`), `tipoPlan: "grupo"`
-      (**valor nuevo en el enum**, ver DATABASE.md), `estadoPago:
+  - `POST /api/grupos/:id/roster` — Formulario 2, la pieza central: - Crea una cuenta `User` por fila (`rol: "estudiante"`, `grupoId`
+    seteado, `emailVerificado: true` de entrada — estas cuentas nunca
+    pasan por el link de verificación). Una fila con error (cédula/
+    correo duplicado, campo faltante) no tumba el resto del lote — se
+    reporta en `errores[]` con el número de fila y sigue con las demás. - Por cada cuenta creada: `Inscripcion` con `programa: "escolar"` o
+    `"empresarial"` (mapeado desde `Grupo.tipo`), `tipoPlan: "grupo"`
+    (**valor nuevo en el enum**, ver DATABASE.md), `estadoPago:
 "pagado"` directo (el pago se da por hecho en el Formulario 1, sin
-      pasar por la cola de verificación de voucher), `monto` = su parte
-      del prorrateo.
-    - `MovimientoContable` por estudiante (`categoria: "inscripcion"`,
-      referenciando la `Inscripcion`) con el mismo monto prorrateado.
-    - `ProgresoEstudiante` con `sesionActualDesbloqueada: 1` (mismo
-      upsert que `confirmarPago` en el flujo individual).
-    - Correo de credenciales (`enviarCorreoCredencialesGrupo`, contraseña
-      generada con `crypto.randomBytes`, sin `await` igual que el resto
-      de correos transaccionales).
-    - **Prorrateo:** `Math.floor(precioAcordado / cantidadTotal)` por
-      estudiante, el residuo del redondeo va a la primera estudiante del
-      lote. Soporta **adiciones tardías** al mismo grupo (llamar el
-      mismo endpoint otra vez después de la primera confirmación): no
-      re-prorratea retroactivamente lo ya cobrado (esos `MovimientoContable`
-      no se tocan) — recalcula el precio por estudiante usando el total
-      (existentes + nuevos) y aplica ese número solo al lote nuevo. Esta
-      regla específica para adiciones tardías **no estaba 100% cerrada en
-      la especificación** (sección 2 la deja como "no re-prorratear
-      retroactivamente" sin más detalle) — es la interpretación más
-      razonable que se tomó esta sesión, documentada con comentarios en
-      el propio `grupoController.js` por si la fundadora prefiere otra
-      regla.
-    - Si el conteo real difiere del estimado (solo en la primera
-      confirmación), la respuesta trae `discrepancia: true` — aviso no
-      bloqueante, se crea igual con la cantidad real.
-    - Al terminar la primera confirmación: `pendienteRoster: false`,
-      `fechaInicio: ahora`.
+    pasar por la cola de verificación de voucher), `monto` = su parte
+    prorrateada — **solo de referencia interna desde el 10/09/2026,
+    ver nota de contabilidad abajo, ya no alimenta ningún
+    `MovimientoContable`.** - `ProgresoEstudiante` con `sesionActualDesbloqueada: 1` (mismo
+    upsert que `confirmarPago` en el flujo individual). - Correo de credenciales (`enviarCorreoCredencialesGrupo`, contraseña
+    generada con `crypto.randomBytes`, sin `await` igual que el resto
+    de correos transaccionales). - **Cédula opcional (NUEVO, 10/09/2026):** ver la nota de
+    `User.cedula` en la sección "Usuarios" arriba — pensado para
+    grupos tipo colegio con estudiantes menores sin cédula. - **Contabilidad — CAMBIO (10/09/2026), reemplaza el diseño
+    original de "prorrateo contable":** antes se creaba un
+    `MovimientoContable` por estudiante, cada uno con su monto
+    prorrateado (`Math.floor(precioAcordado / cantidadTotal)`, residuo
+    en la primera estudiante del lote). La fundadora pidió eliminarlo
+    — muchas entradas pequeñas por el mismo grupo distorsionaban el
+    balance y lo hacían difícil de leer de un vistazo. Ahora: se crea
+    **una sola** `MovimientoContable` por grupo, por el monto TOTAL
+    (`precioAcordado`), y solo en la primera confirmación del roster
+    (el primer pago real). `Inscripcion.monto` de cada estudiante
+    sigue calculándose igual que antes (prorrateado, residuo en la
+    primera del lote) pero ya es puramente informativo — no se suma a
+    contabilidad. Las adiciones tardías (ver abajo) **ya no generan
+    ningún movimiento contable nuevo**: no hay cobro adicional real
+    que registrar, `precioAcordado` ya cubrió al grupo completo por
+    delante. - **Adiciones tardías:** el mismo endpoint soporta llamarlo otra vez
+    después de la primera confirmación, para agregar estudiantes a un
+    grupo que ya inició. `Inscripcion.monto` de las nuevas se sigue
+    calculando como referencia (usando el total existentes + nuevos),
+    pero — a diferencia del diseño original — no crea ningún
+    `MovimientoContable`, por la misma razón de arriba. - Si el conteo real difiere del estimado (solo en la primera
+    confirmación), la respuesta trae `discrepancia: true` — aviso no
+    bloqueante, se crea igual con la cantidad real. - Al terminar la primera confirmación: `pendienteRoster: false`,
+    `fechaInicio: ahora`.
 - **`Inscripcion.tipoPlan`** — enum ampliado de `["fundacion","normal","vip"]`
   a `["fundacion","normal","vip","grupo"]`. `"grupo"` es exclusivo de
   estudiantes de un `Grupo`: no tienen nivel individual de plan, el precio
   vive solo en `Grupo.precioAcordado` (nunca pasa por la colección `Plan`
   — resuelve el punto que quedaba abierto en
   `ESPECIFICACION_PROGRAMAS_NUEVOS.md` sección 5, punto 5, a favor de la
-  opción que ahí se marcaba como "probable").
+  opción que ahí se marcaba como "probable"; **decisión reconfirmada el
+  10/09/2026**, ver nota en la sección de `Plan` arriba).
 - **`utils/reporteGrupos.js`** + endpoint
   `POST /api/interno/reporte-grupos` (mismo archivo `resumenRoutes.js`/
   `resumenController.js` del resumen diario general, mismo mecanismo de
@@ -467,11 +562,17 @@ cron de reporte diario). Motorista sigue sin diseñar — ver
   `Grupo.activo` pasa a `false` en la misma pasada (no vuelve a entrar
   mañana). El toggle manual de `activo` en `PATCH /api/grupos/:id` sigue
   disponible como respaldo.
+- **NUEVO (10/09/2026): soft delete en lote** — ver
+  `PATCH /api/usuarios/desactivar-lote` en la sección "Usuarios" arriba.
+  Pensado específicamente para cuando el roster de una institución
+  cambia (estudiantes que ya no pertenecen al grupo).
 - **UI de coordinadora/admin** (ver ARQUITECTURA_FRONTEND.md):
   `/panel/grupos` (listado + Formulario 1), `/panel/grupos/[id]`
-  (detalle + Formulario 2, con carga CSV/pegado y fallback fila por
-  fila), y `/panel/estudiantes` (ahora muestra de qué institución es
-  cada estudiante y permite filtrar por grupo — ver más abajo).
+  (detalle + Formulario 2 — **solo fila por fila desde el 10/09/2026,
+  se eliminó el modo CSV/pegado**, ver nota abajo — más checkboxes para
+  desactivar estudiantes en lote), y `/panel/estudiantes` (ahora muestra
+  de qué institución es cada estudiante y permite filtrar por grupo —
+  ver más abajo).
 
 **Desplegado y probado en producción (09/09/2026)** — se creó un grupo
 real, se cargó un roster, y salieron dos bugs que no aparecían en la
@@ -720,11 +821,9 @@ scope `workflow` incluido evita este paso extra.
 
 ## Pendiente real (backend)
 
-- **Confirmar cumplimiento legal del test psicológico (Ley 172-13)**
-  antes de usarlo con estudiantes reales — ver detalle en la sección
-  "Test psicológico de perfil conductual" de arriba. Requiere que la
-  fundadora consulte con asesoría legal, no es algo que Claude pueda
-  resolver por su cuenta.
+- **RESUELTO (10/09/2026):** revisión legal del test psicológico
+  completo (Ley 172-13) — la fundadora confirmó que ya se hizo y está
+  bien. Puede usarse con estudiantes reales sin este bloqueante.
 - **ALTA PRIORIDAD (28/08/2026): borrar y recrear `ContenidoSesion` +
   `Examen` desde cero.** Ambos se cargaron en una sesión sin documentar,
   pero con defectos serios — PDFs con codificación rota y exámenes con
@@ -744,35 +843,51 @@ scope `workflow` incluido evita este paso extra.
   actualizar/agregar el registro correspondiente.
 - Terminar Telegram para el celular de la fundadora (`chat_id`) — sería
   el canal de respaldo si algún correo de Resend llegara a fallar.
-- **RESUELTO (07/09/2026):** ya existe UI de admin para editar planes
-  (`admin/planes`, ver ARQUITECTURA_FRONTEND.md) — sigue pendiente la
-  misma UI para el resto de `Configuracion` (lo que no sea precio de
-  plan).
-- **PROGRAMA ESCOLAR/EMPRESARIAL: construido y desplegado (08-09/09/2026)**
-  — colección `Grupo`, `User.grupoId`, gates de práctica/cuestionario,
-  formularios de grupo + roster, prorrateo contable, cron de reporte
-  diario, y la mejora en `/panel/estudiantes` para distinguir individual
-  vs. grupo. Ver la sección "NUEVO: Programa Escolar/Empresarial" más
-  arriba para el detalle completo, con los dos bugs que salieron en la
-  prueba real y ya se corrigieron. **Lo que sigue pendiente de todo esto:**
+  **Sigue siendo el único bloqueante de infraestructura abierto** —
+  Resend (dominio verificado) y la UI de admin para precios de plan ya
+  se cerraron, ver DATABASE.md.
+- **NUEVO (10/09/2026): permisos inconsistentes en soft delete de
+  estudiantes.** `PATCH /api/usuarios/desactivar-lote` (nuevo) y
+  `PATCH /api/usuarios/:id/estado` (ya existía) son ambos `admin`-only,
+  pero la UI que los consume vive en `/panel`, al que también entra
+  `coordinadora` (`/panel/estudiantes` y, para el nuevo, `/panel/grupos/[id]`).
+  Si la coordinadora necesita desactivar estudiantes ella misma, hay que
+  decidir si se abre `permitirRoles("coordinadora", "admin")` en ambos
+  endpoints.
+- **PROGRAMA ESCOLAR/EMPRESARIAL: construido y desplegado (08-09/09/2026),
+  contabilidad simplificada el 10/09/2026** — colección `Grupo`,
+  `User.grupoId`, gates de práctica/cuestionario, formularios de grupo +
+  roster, una sola entrada contable por grupo (ya no prorrateada, ver
+  sección de arriba), cron de reporte diario, y la mejora en
+  `/panel/estudiantes` para distinguir individual vs. grupo. Ver la
+  sección "NUEVO: Programa Escolar/Empresarial" más arriba para el
+  detalle completo. **Decisiones cerradas el 10/09/2026** (antes
+  abiertas en este mismo pendiente):
+  - Nombre de la colección: `CuestionarioEscolar` (confirmado, no
+    `InformacionComplementariaEscolar`).
+  - Revisión legal (Ley 172-13) de las 14 preguntas: hecha, aprobada.
+  - `Sesion`/`Examen`/`ContenidoSesion` de programas con currículo
+    propio: no se duplican colecciones, se les agrega
+    `programaContenido` (`estandar`/`motorista`/`pesados`) — Escolar y
+    Empresarial no necesitan nada nuevo aquí, siguen usando
+    `programaContenido: "estandar"`. Diseño cerrado, **implementación
+    todavía no construida** (se construye junto con Motorista/Pesados).
+  - `Plan`: confirmado que Escolar/Empresarial no necesitan fila propia
+    — su precio vive solo en `Grupo.precioAcordado`.
+  - **Nuevo programa agregado a la lista de diseño: Pesados**
+    (conductores de camiones y trailers, alcance inicial limitado a
+    esos dos tipos de vehículo) — mismo estado que Motorista, currículo
+    propio sin diseñar todavía.
+    **Lo que sigue pendiente de todo esto:**
   - Probar el cron de reporte diario en vivo (nunca se esperó a que
     pasaran las 24h reales, ni se disparó a mano con `workflow_dispatch`).
   - Limpiar la cuenta de estudiante "huérfana" que pudo haber quedado de
     la prueba donde salió el bug de `numeroReferencia` (ver esa sección).
-  - **Motorista sigue sin diseñar** — es lo único de
-    `ESPECIFICACION_PROGRAMAS_NUEVOS.md` que no se tocó. Primer paso:
-    sostener con la fundadora la misma conversación de descubrimiento que
-    ya se tuvo para Escolar/Empresarial, sección 5 de ese documento.
-  - Confirmar con asesoría legal las 14 preguntas de
-    `InformacionComplementariaEscolar` (mismo pendiente que el test
-    psicológico completo, Ley 172-13) antes de usarlo con estudiantes
-    reales.
-  - Nombre final de la colección `InformacionComplementariaEscolar` —
-    sigue sin confirmar con la fundadora si le gusta o prefiere otro.
-  - Sin resolver todavía: si `Sesion`/`Examen`/`ContenidoSesion` de
-    Escolar/Empresarial/Motorista van a necesitar su propio currículo
-    (agregar `programa` al índice de `Sesion`) — hoy no hace falta,
-    reusan el de `estandar`, así que no hay apuro.
+  - **Diseñar Motorista y Pesados en detalle con la fundadora** — es lo
+    único de `ESPECIFICACION_PROGRAMAS_NUEVOS.md`/la lista de programas
+    que no se tocó. Primer paso: sostener con la fundadora la misma
+    conversación de descubrimiento que ya se tuvo para
+    Escolar/Empresarial (sección 5 de ese documento), para cada uno.
 - Decidir si vale la pena construir `POST /sesiones` (crear sesión desde
   el panel) o si el script de terminal es suficiente a largo plazo.
 - Recordatorios por correo (examen disponible / voucher sin seguimiento):
