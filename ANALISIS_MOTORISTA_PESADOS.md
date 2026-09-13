@@ -66,7 +66,7 @@ o el "al azar" no tiene nada entre qué elegir.
 1. **`/inscripcion`** — la estudiante primero elige **programa**
    (Escolares — el `estandar` actual, mantiene su nombre público
    actual —, Motorizados, Pesados), y recién después ve los planes de
-   *ese* programa y el formulario de voucher.
+   _ese_ programa y el formulario de voucher.
 2. **Pago** — mismo flujo de voucher/verificación que hoy. No cambia
    nada del mecanismo, solo qué `programa` queda registrado en la
    `Inscripcion`.
@@ -86,7 +86,7 @@ o el "al azar" no tiene nada entre qué elegir.
    sesión y sesión (excepto override de coordinadora), 3 intentos,
    versión aleatoria entre las activas de esa sesión.
 7. **Fin de curso** — al aprobar la última sesión, `cursoCompletado =
-   true`. **Aquí hay una diferencia real con `estandar`:** dijiste que
+true`. **Aquí hay una diferencia real con `estandar`:** dijiste que
    por ahora Motorizados y Pesados son **solo teoría, sin parte
    práctica** — "va a ser parecido al curso para escolares". Eso
    significa que el gate de práctica de manejo (instructor, aprobación,
@@ -227,7 +227,7 @@ de esquema.
   `programaContenido` (ver sección 3, `ProgresoEstudiante.programa`).
   Sin este cambio, el bug de "ve la sesión equivocada" es inmediato en
   cuanto exista más de un programa con `numero` repetidos.
-- **`sesionController.js#listarSesiones`**: hoy trae *todas* las
+- **`sesionController.js#listarSesiones`**: hoy trae _todas_ las
   sesiones sin filtrar programa — para el panel de coordinadora hay que
   agregar `?programaContenido=` como filtro opcional (si no, la lista
   de gestión mezcla las sesiones de los 3 programas sin poder
@@ -322,7 +322,7 @@ independiente — el `dashboard/page.tsx` asume directamente
 pediste ("en la selección del curso los agregamos") lo estoy
 interpretando como el selector nuevo que se agrega dentro de
 `/inscripcion` (arriba) — si en realidad te referís a un paso
-*distinto*, posterior al login, antes de `/inscripcion` (p. ej. una
+_distinto_, posterior al login, antes de `/inscripcion` (p. ej. una
 estudiante ya logueada eligiendo qué curso empezar), avísame y lo
 separamos en una ruta propia; tal como está el resto del flujo, no creo
 que haga falta porque cada estudiante ya queda "atada" a un programa
@@ -414,13 +414,25 @@ como contexto de por qué se hicieron antes del trabajo mayor.
 
 ## 7. Preguntas abiertas para la fundadora (antes de escribir código)
 
-> Pregunta 1 original (test psicológico) ya se resolvió el 11/09/2026 —
-> ver el aviso al inicio del documento. Quedan estas:
+> Pregunta original 1 (test psicológico) resuelta el 11/09/2026 — ver
+> el aviso al inicio del documento. Preguntas 1 y 2 de abajo, resueltas
+> el 13/09/2026. Queda un error de edición corregido en esta misma
+> fecha: la pregunta de "Estructura de precio" se había borrado por
+> accidente de una versión anterior de este documento al renumerar —
+> restaurada acá con su respuesta ya incluida.
 
-1. **¿Cuántas sesiones tiene la teoría de Motorizados y de Pesados?**
-   ¿Las mismas 4 de `estandar`, o un número distinto (podrían incluso
-   diferir entre sí, uno de otro)? Define si `max: 4` en `Sesion`
-   necesita cambiar o dejar de ser un límite fijo.
+1. **RESUELTO (13/09/2026): ¿Cuántas sesiones tiene la teoría de
+   Motorizados y de Pesados?** Confirmado: **4 sesiones**, igual que
+   `estandar` — mismo límite `max: 4` en `Sesion`, no hace falta
+   cambiarlo.
+2. **RESUELTO (13/09/2026): estructura de precio.** Confirmado: **un
+   solo plan por programa**, sin niveles (no hay práctica de manejo de
+   por medio). Esto cierra la opción (a) de la sección 3 para `Plan` —
+   un `codigo` nuevo (ej. `"teorico"`) en vez de niveles
+   Fundación/Estándar/VIP, y los 4 campos de práctica (`modalidadPractica`,
+   `cantidadSesionesPractica`, `duracionSesionMinutos`,
+   `costoPorSesion`), hoy `required`, necesitan volverse opcionales a
+   nivel de esquema para este tipo de plan.
 3. **Contenido del diploma/certificado:** ¿debe decir explícitamente
    "Motorizados" o "Pesados" en el PDF, o alcanza con el mismo diseño
    genérico de hoy? Si tiene que decir el programa, hay que revisar la
@@ -433,7 +445,7 @@ como contexto de por qué se hicieron antes del trabajo mayor.
    de detalle real de cada tarjeta con la fundadora.
 5. Para Pesados: confirmaste "alcance inicial limitado a" camiones y
    trailers — ¿eso afecta solo al copy/marketing, o hay contenido
-   *distinto* dentro del programa según tipo de vehículo (p. ej.
+   _distinto_ dentro del programa según tipo de vehículo (p. ej.
    ¿camión y trailer comparten exactamente las mismas 4 sesiones, o en
    algún punto se separan)? Si comparten todo, no hace falta nada
    especial en el modelo; si en algún momento necesitan diverger, capaz

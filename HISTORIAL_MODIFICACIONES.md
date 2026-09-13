@@ -4,6 +4,58 @@
 > ARQUITECTURA_BACKEND.md, ARQUITECTURA_FRONTEND.md y DATABASE.md, este
 > archivo es solo un changelog, no la fuente de verdad de cómo funciona nada.
 
+## 13/09/2026 — Deploy de las correcciones del 11/09, bug adicional encontrado, decisiones finales de Motorizados/Pesados
+
+Sesión corta de seguimiento tras desplegar los cambios del 11/09 a los
+repos reales (Render + Vercel).
+
+**Deploy con problemas, resuelto en dos rondas:**
+
+1. Primer intento: Render tiró `Cannot find module
+'../models/InformacionComplementariaEscolar'` — el rename del 11/09
+   nunca había llegado a pegarse en el repo real (solo se habían
+   borrado los archivos viejos, sin reemplazo). Vercel no lo detectó
+   porque un link roto a una ruta de Next.js no rompe el build, solo da
+   404 en producción — por eso "en Vercel subió bien" no era señal de
+   que el backend también estuviera bien.
+2. Se recomendó reemplazar carpetas completas (`src/`, `scripts/` en
+   backend; `app/`, `contexts/`, `lib/` en frontend) en vez de archivos
+   sueltos, para evitar que quedara algo a medio pegar otra vez.
+3. Tras aplicarlo, la fundadora encontró **un archivo que se me había
+   pasado en el rename original**: `scripts/limpiarCuentasBot.js`
+   tenía un `require("../src/models/InformacionComplementariaEscolar")`
+   real (no comentario) — no crasheaba el servidor porque `scripts/` no
+   se ejecuta al bootear, solo al correrlo a mano. Corregido. Se
+   confirmó con una búsqueda de **todo** el repo (no solo `src/`) que
+   no queda ningún otro caso — antes la búsqueda se había limitado a
+   los archivos que ya se sabía que se habían tocado.
+
+**Aclaración de expectativas:** la fundadora, tras varios días desde el
+análisis original, esperaba ver Motorizados/Pesados ya funcionando
+(tarjetas en `/inscripcion`, contenido gestionable desde el panel). Se
+aclaró que el trabajo del 11/09 fue **solo la preparación técnica**
+que el propio análisis pedía hacer antes de construir el programa — la
+construcción real (backend + `/inscripcion` + panel + dashboard) nunca
+se empezó. Documentado explícitamente en `ARQUITECTURA_BACKEND.md` para
+que no se repita la confusión.
+
+**Decisiones finales cerradas para Motorizados/Pesados** (cierran las
+preguntas 1 y 2 de `ANALISIS_MOTORISTA_PESADOS.md`, sección 7):
+
+- **4 sesiones** cada uno, igual que `estandar`.
+- **Un solo plan por programa, sin niveles** (no hay práctica de manejo).
+
+**Corrección al propio análisis:** se encontró que la pregunta de
+"Estructura de precio" se había borrado por accidente en una edición
+anterior del documento (un `str_replace` mal delimitado durante el
+renumerado del 11/09) — restaurada con su respuesta ya incluida.
+
+**Construcción de Motorizados/Pesados: queda para una sesión de trabajo
+dedicada**, a pedido explícito de la fundadora, para no arrancarla y
+dejarla a medias por falta de tiempo/espacio en el chat. Con las dos
+últimas preguntas cerradas, el análisis queda completo — la próxima
+sesión puede ir directo a construir siguiendo la sección 8.
+
 ## 11/09/2026 — Análisis de Motorizados/Pesados, bug de Cuestionario Escolar corregido, 3 correcciones preparatorias
 
 Sesión de dos partes: primero un documento de análisis

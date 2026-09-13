@@ -945,13 +945,16 @@ InformacionComplementariaEscolar")` activo (no un comentario, código
     Escolar** (`/escolar`, mismo patrón que `/empresas`) — Motorizados,
     Pesados y `estandar` se explican dentro de `/inscripcion`, no como
     páginas propias.
-    Base técnica ya lista para cuando se construya: `Sesion` soporta
-    `programaContenido` con índice compuesto (ver sección `Sesion`
-    arriba), y el gate de práctica está centralizado en un solo helper.
-    Sigue pendiente: cantidad de sesiones, estructura de precio/`Plan`
-    (sin práctica de manejo, el esquema actual de `Plan` no calza limpio
-    — ver el análisis), y contenido del diploma — preguntas puntuales en
-    `ANALISIS_MOTORISTA_PESADOS.md`, sección 7.
+  - **RESUELTO (13/09/2026):** 4 sesiones cada uno (igual que
+    `estandar`), y un solo plan por programa sin niveles (sin práctica
+    de manejo). Ver `ANALISIS_MOTORISTA_PESADOS.md`, sección 7.
+    Base técnica ya lista: `Sesion` soporta `programaContenido` con
+    índice compuesto (ver sección `Sesion` arriba), y el gate de práctica
+    está centralizado en un solo helper. **CONSTRUCCIÓN TODAVÍA NO
+    EMPEZADA** — lo hecho hasta el 13/09/2026 es solo preparación técnica,
+    no el programa en sí (nada visible en `/inscripcion`, el panel, ni el
+    dashboard). Se retoma en una sesión de trabajo dedicada — ver el
+    orden de trabajo en la sección 8 del análisis, pasos 2 en adelante.
 - Decidir si vale la pena construir `POST /sesiones` (crear sesión desde
   el panel) o si el script de terminal es suficiente a largo plazo.
 - Recordatorios por correo (examen disponible / voucher sin seguimiento):
