@@ -12,7 +12,7 @@ repos reales (Render + Vercel).
 **Deploy con problemas, resuelto en dos rondas:**
 
 1. Primer intento: Render tiró `Cannot find module
-'../models/InformacionComplementariaEscolar'` — el rename del 11/09
+   '../models/InformacionComplementariaEscolar'` — el rename del 11/09
    nunca había llegado a pegarse en el repo real (solo se habían
    borrado los archivos viejos, sin reemplazo). Vercel no lo detectó
    porque un link roto a una ruta de Next.js no rompe el build, solo da
@@ -41,7 +41,6 @@ que no se repita la confusión.
 
 **Decisiones finales cerradas para Motorizados/Pesados** (cierran las
 preguntas 1 y 2 de `ANALISIS_MOTORISTA_PESADOS.md`, sección 7):
-
 - **4 sesiones** cada uno, igual que `estandar`.
 - **Un solo plan por programa, sin niveles** (no hay práctica de manejo).
 
@@ -55,6 +54,12 @@ dedicada**, a pedido explícito de la fundadora, para no arrancarla y
 dejarla a medias por falta de tiempo/espacio en el chat. Con las dos
 últimas preguntas cerradas, el análisis queda completo — la próxima
 sesión puede ir directo a construir siguiendo la sección 8.
+
+**Purga de datos de prueba: corrida en real.** Dry-run y `--confirmar`
+dieron los mismos conteos (consistentes, sin sorpresas): 10 usuarios
+estudiante, 5 inscripciones, 4 progresoEstudiante, 3 grupos, 16
+movimientosContables, 1 balanceMensual. Base de datos de producción
+queda con una sola cuenta: `maria@test.com` (admin).
 
 ## 11/09/2026 — Análisis de Motorizados/Pesados, bug de Cuestionario Escolar corregido, 3 correcciones preparatorias
 
