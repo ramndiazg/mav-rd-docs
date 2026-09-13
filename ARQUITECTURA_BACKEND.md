@@ -863,6 +863,15 @@ scope `workflow` incluido evita este paso extra.
     también se quiere limpiar).
   - Uso sin cambios: `node scripts/purgarUsuariosPrueba.js` (dry-run) /
     `--confirmar` (real, pide escribir `BORRAR`).
+- **`limpiarCuentasBot.js` — CORREGIDO (13/09/2026), se había pasado por
+  alto en el rename del 11/09.** Tenía un `require("../src/models/
+InformacionComplementariaEscolar")` activo (no un comentario, código
+  real) que habría hecho crashear el script apenas se ejecutara. Se
+  detectó porque, al desplegar en Render, el `require` equivalente en
+  `sesionController.js` sí crasheó el servidor entero (`scripts/` no se
+  ejecuta al bootear, por eso este no se notó hasta que se corrió a
+  mano). Confirmado con una búsqueda de todo el repo (no solo `src/`)
+  que no queda ningún otro caso.
 
 - **`migrarPlanes.js` (NUEVO, 07/09/2026)**: siembra/actualiza los 3
   documentos de `Plan` y reetiqueta inscripciones viejas
@@ -936,13 +945,13 @@ scope `workflow` incluido evita este paso extra.
     Escolar** (`/escolar`, mismo patrón que `/empresas`) — Motorizados,
     Pesados y `estandar` se explican dentro de `/inscripcion`, no como
     páginas propias.
-  Base técnica ya lista para cuando se construya: `Sesion` soporta
-  `programaContenido` con índice compuesto (ver sección `Sesion`
-  arriba), y el gate de práctica está centralizado en un solo helper.
-  Sigue pendiente: cantidad de sesiones, estructura de precio/`Plan`
-  (sin práctica de manejo, el esquema actual de `Plan` no calza limpio
-  — ver el análisis), y contenido del diploma — preguntas puntuales en
-  `ANALISIS_MOTORISTA_PESADOS.md`, sección 7.
+    Base técnica ya lista para cuando se construya: `Sesion` soporta
+    `programaContenido` con índice compuesto (ver sección `Sesion`
+    arriba), y el gate de práctica está centralizado en un solo helper.
+    Sigue pendiente: cantidad de sesiones, estructura de precio/`Plan`
+    (sin práctica de manejo, el esquema actual de `Plan` no calza limpio
+    — ver el análisis), y contenido del diploma — preguntas puntuales en
+    `ANALISIS_MOTORISTA_PESADOS.md`, sección 7.
 - Decidir si vale la pena construir `POST /sesiones` (crear sesión desde
   el panel) o si el script de terminal es suficiente a largo plazo.
 - Recordatorios por correo (examen disponible / voucher sin seguimiento):
