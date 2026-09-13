@@ -4,6 +4,110 @@
 > ARQUITECTURA_BACKEND.md, ARQUITECTURA_FRONTEND.md y DATABASE.md, este
 > archivo es solo un changelog, no la fuente de verdad de cómo funciona nada.
 
+## 13/09/2026 (segunda sesión) — Construcción de Motorizados/Pesados
+
+Sesión de trabajo dedicada (la que se había pospuesto explícitamente en la
+sesión anterior) para construir Motorizados/Pesados de punta a punta,
+siguiendo el orden de trabajo de `ANALISIS_MOTORISTA_PESADOS.md`, sección 8.
+
+**Backend:**
+
+- `models/ProgresoEstudiante.js`: campo nuevo `programa` (espejo de
+  `Inscripcion.programa`, seteado una sola vez al confirmar el pago).
+- `models/Plan.js`: `codigo` acepta `"teorico"` (plan único de
+  Motorizados/Pesados, sin niveles); `modalidadPractica`,
+  `duracionSesionMinutos` y `costoPorSesion` pasan a `required: false` — un
+  plan "teorico" no tiene práctica de manejo, no hay con qué llenarlos.
+- `models/Inscripcion.js`: `tipoPlan` acepta `"teorico"`.
+- `utils/elegibilidadPractica.js`: `requierePracticaDeManejo` ahora recibe
+  un segundo parámetro opcional `programa` — `motorizados`/`pesados` no
+  requieren práctica, igual que las estudiantes con `grupoId` (Escolar/
+  Empresarial). Actualizados los 4 archivos que lo usan:
+  `diplomaController.js` (x2), `practicaController.js`,
+  `intentoExamenController.js`.
+- `controllers/sesionController.js`: las 3 funciones (`listarSesiones`,
+  `obtenerSesionParaEstudiante`, `actualizarSesion`) ahora filtran por
+  `programaContenido` — sin esto, con `Sesion.numero` repetido entre
+  programas (ya no es único global desde el 11/09), una estudiante de
+  Motorizados podía terminar viendo la Sesión 1 de `estandar` por
+  accidente. `listarSesiones` acepta `?programaContenido=` opcional (sigue
+  devolviendo todo si no se manda, por compatibilidad); `actualizarSesion`
+  acepta `?programaContenido=` con default `"estandar"` (endpoint sin uso
+  real en el frontend todavía, pero corregido igual).
+- `controllers/diplomaController.js`: `listarElegibles` y `generarDiploma`
+  usan el nuevo criterio con `programa`; además, la consulta de `Sesion`
+  para armar la lista de sesiones del PDF del diploma ahora también
+  filtra por `programaContenido` (mismo motivo que arriba).
+- `controllers/inscripcionController.js`: `crearInscripcion` y
+  `crearOReenviarInscripcionPropia` aceptan `programa` del body (default
+  `"estandar"`), validan `tipoPlan` contra la lista válida de ese
+  programa, y lo guardan en la `Inscripcion` creada. `confirmarPago` copia
+  `inscripcion.programa` al `ProgresoEstudiante` que crea.
+- Script nuevo `scripts/sembrarMotorizadosPesados.js`: siembra las 4
+  `Sesion` (títulos provisionales, sin contenido real) y el `Plan`
+  "teorico" (precio provisional RD$0, o el que se pase con
+  `--precio-motorizados=`/`--precio-pesados=`) de cada programa. Mismo
+  patrón dry-run/`--confirmar` que los scripts existentes. **Sin correr
+  todavía** — pendiente para cuando se despliegue este trabajo.
+
+**Frontend:**
+
+- `app/inscripcion/page.tsx`: nuevo paso "Elige tu curso" (3 tarjetas:
+  Escolares/Motorizados/Pesados) antes de "Elige tu plan". Los planes se
+  piden a `GET /api/planes?programa=...` según lo elegido; el formulario
+  manda `programa` en `POST /inscripciones/mia`. Admite preselección vía
+  `?programa=motorizados` en la URL (para un eventual botón "Inscríbete"
+  desde una página de marketing propia — no construida todavía, ver
+  pregunta 4 de `ANALISIS_MOTORISTA_PESADOS.md`). Envuelto en `<Suspense>`
+  por el uso de `useSearchParams`.
+- `app/dashboard/page.tsx`: `requierePractica` ahora también depende de
+  `progreso.programa` (motorizados/pesados no tienen práctica), no solo de
+  `grupoId`. El conteo fijo `SESIONES = [1,2,3,4]` se dejó **sin tocar** a
+  propósito — la pregunta de "¿cuántas sesiones tiene cada programa?" se
+  cerró el 13/09 (primera sesión) en las mismas 4 para los 3 programas, así
+  que no hacía falta el fetch dinámico que el análisis original planteaba
+  como alternativa.
+- `app/(coordinadora)/panel/aula-virtual/page.tsx` y
+  `panel/examenes/page.tsx`: pestañas de programa (Escolares/Motorizados/
+  Pesados) para filtrar qué sesiones se gestionan — filtrado en el
+  cliente sobre la misma lista completa que ya se traía de
+  `GET /api/sesiones`, sin pegarle otra vez al backend por cada pestaña.
+- `app/(admin)/admin/planes/page.tsx`: agregado el selector de programa
+  (antes solo mostraba los planes de `estandar`, no tenía forma de llegar
+  a los de Motorizados/Pesados). El fetch y el `PATCH` ahora mandan
+  `?programa=`; el formulario oculta los 4 campos de práctica cuando
+  `plan.codigo === "teorico"` (no aplican). Se corrigió también un `key`
+  que hubiera colisionado (`plan.codigo` solo, y "teorico" existe en dos
+  programas distintos) — pasó a `` `${plan.programa}-${plan.codigo}` ``.
+
+**Verificación:** todos los `.js` del backend tocados pasan `node --check`.
+El frontend se revisó a mano (balance de llaves/paréntesis por archivo) —
+el proyecto no tiene `node_modules` instalado, así que no se pudo correr
+`tsc --noEmit` ni `next build` completo. **Recomendado antes de
+desplegar:** correr `npm run build` en el frontend real (con
+`node_modules`) para atrapar cualquier error de tipos que esta revisión
+manual no haya visto.
+
+**Pendiente real para la próxima sesión (no bloqueante, pero sin hacer):**
+
+1. Correr `node scripts/sembrarMotorizadosPesados.js --confirmar` en
+   producción (con los precios reales vía `--precio-motorizados=`/
+   `--precio-pesados=`, o ajustarlos después desde
+   `/admin/planes`). Recordar el paso de despliegue del 11/09: confirmar
+   que el índice viejo `numero_1` de `Sesion` ya no existe en Atlas antes
+   de sembrar (si el modelo se desplegó después del 11/09, ya no aplica).
+2. Cargar contenido real y exámenes (con **varias versiones activas por
+   sesión desde el día uno**) para Motorizados y Pesados desde el panel.
+3. `npm run build` real en ambos repos antes de desplegar (ver arriba).
+4. Preguntas 3 y 5 de `ANALISIS_MOTORISTA_PESADOS.md` (sección 7) siguen
+   abiertas: contenido del diploma (¿debe decir "Motorizados"/"Pesados"
+   explícitamente?) y si Pesados necesita distinguir camión/trailer dentro
+   del programa. No bloquean lo ya construido.
+5. Página(s) de marketing propia por programa (`/motorizados`, `/pesados`)
+   — opcional, ver sección 5 del análisis. El `?programa=` de
+   `/inscripcion` ya está listo para recibirlas como destino de un botón
+   "Inscríbete" si se deciden a construir.
+
 ## 13/09/2026 — Deploy de las correcciones del 11/09, bug adicional encontrado, decisiones finales de Motorizados/Pesados
 
 Sesión corta de seguimiento tras desplegar los cambios del 11/09 a los
