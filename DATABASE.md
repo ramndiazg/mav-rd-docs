@@ -179,12 +179,13 @@ claves quedan huérfanos en Atlas; no se borraron, pero no se debe seguir
 escribiendo ahí para precios. El resto de `configuracion` (lo que no sea
 `precio_plan_*`) sigue funcionando igual, sin cambios.
 
-## 4. sesiones — ya recreada tras la purga (13/08/2026)
+## 4. sesiones — ya recreada tras la purga (13/08/2026), índice corregido (11/09/2026)
 
 ```js
 {
   _id: ObjectId,
-  numero: Number,   // único, 1 a 4
+  numero: Number,            // 1 a 4 — único junto con programaContenido, no solo
+  programaContenido: String, // default "estandar" — NUEVO 11/09/2026
   titulo: String,
   teoria: String,   // HTML/Markdown
   videos: [{ titulo: String, url: String }],
@@ -193,7 +194,16 @@ escribiendo ahí para precios. El resto de `configuracion` (lo que no sea
 }
 ```
 
-4 documentos con títulos **todavía provisionales** ("Sesión 1"..."Sesión
+Índice: `{ programaContenido: 1, numero: 1 }`, único. **CORREGIDO
+(11/09/2026):** antes `numero` tenía `unique: true` a nivel de campo
+(único global) — con eso, una `Sesion { numero: 1 }` para Motorizados
+habría chocado como duplicado contra la de `estandar`. **Paso de
+despliegue pendiente:** el índice viejo `numero_1` sigue existiendo en
+Atlas hasta que se dropee a mano o se corra `syncIndexes()` — hacerlo
+antes de sembrar sesiones de un programa nuevo.
+
+4 documentos existentes (todos `programaContenido: "estandar"` por el
+`default`) con títulos **todavía provisionales** ("Sesión 1"..."Sesión
 4") — confirmado el 28/08/2026 revisando la pantalla real del aula
 virtual (el `<h1>` sigue mostrando "Sesión 1", no un tema real).
 Renombrarlos a los temas reales es una simple actualización de `titulo`
@@ -405,7 +415,7 @@ desde un panel de admin aparte (`/admin/notificaciones-practica`).
   _id: ObjectId,
   programa: String,        // default "estandar" — sin enum cerrado, a
                             // propósito, por los programas futuros
-                            // (escolar/empresarial/motorista)
+                            // (escolar/empresarial/motorizados)
   codigo: String,           // enum: 'fundacion' | 'normal' | 'vip'
   nombre: String,
   precio: Number,
@@ -436,6 +446,20 @@ VIP incluye además en `caracteristicas`: acompañamiento al INTRANT,
 preparación para su examen teórico, instrucciones para el examen del
 permiso de aprendizaje, e instrucciones para el examen práctico de la
 licencia.
+
+**Historial de precios:** el plan de entrada se llamó "Normal" a
+RD$1,500 y el más completo "VIP" a RD$7,000 antes del 07/09/2026. Se
+restructuró a 3 niveles (Fundación/Estándar/VIP) el mismo día; el precio
+de Fundación bajó a RD$1,000 tras una corrección pedida por la fundadora
+horas después del cambio inicial (que había quedado en RD$1,500).
+
+**Editable desde el panel:** `admin/planes/page.tsx` (nuevo,
+07/09/2026) — no hace falta tocar código ni Atlas para cambiar precio,
+nombre, frase destacada, características, o activar/desactivar un plan.
+Ver ARQUITECTURA_FRONTEND.md. **Nota (11/09/2026):** el esquema actual
+asume práctica de manejo en 4 campos `required` — no calza limpio con
+un programa 100% teórico como Motorizados/Pesados. Ver decisión
+pendiente en `ANALISIS_MOTORISTA_PESADOS.md`, sección 3.
 
 ---
 
@@ -485,14 +509,14 @@ detalle y el cron de reporte diario.
 ahora acepta quedar sin valor (ver sección 1) — pensado para grupos
 tipo colegio con estudiantes menores sin cédula.
 
-## 23. CuestionarioEscolar — NUEVA (08/09/2026), nombre confirmado (10/09/2026)
+## 23. CuestionarioEscolar — NUEVA (08/09/2026), nombre confirmado (10/09/2026), código sincronizado (11/09/2026)
 
 ```js
 {
   _id: ObjectId,
   userId: ObjectId,     // ref: users, único — una por estudiante
   respuestas: [Number],  // 12 respuestas escala 1-5
-  respuestasAbiertas: [String], // 2 respuestas de texto libre
+  reflexiones: [String], // 2 respuestas de texto libre
   createdAt: Date, updatedAt: Date
 }
 ```
@@ -500,27 +524,19 @@ tipo colegio con estudiantes menores sin cédula.
 Cuestionario informativo de 14 preguntas (12 + 2 abiertas) para
 estudiantes de Escolar (`Grupo.tipo === "colegio"`) — reemplaza a
 `TestPsicologico` solo para ellas; Empresarial sigue usando el test
-completo igual que `estandar`. Colección deliberadamente separada, no
-reusa `TestPsicologico` — preguntas sobre conocimiento vial y logística,
-sin ningún eje de autocontrol/estrés/percepción de riesgo. **Revisión
-legal (Ley 172-13) ya hecha y aprobada (confirmado 10/09/2026)** — puede
-usarse con estudiantes reales. Nombre de la colección confirmado con la
-fundadora el 10/09/2026: `CuestionarioEscolar` (antes provisional como
-`InformacionComplementariaEscolar`; no había documentos reales creados
-todavía, así que no hizo falta migrar nada al renombrar).
+completo igual que `estandar`, y lo mismo va a aplicar a Motorizados y
+Pesados (confirmado 11/09/2026, ver `ANALISIS_MOTORISTA_PESADOS.md`).
+Colección deliberadamente separada, no reusa `TestPsicologico` —
+preguntas sobre conocimiento vial y logística, sin ningún eje de
+autocontrol/estrés/percepción de riesgo. **Revisión legal (Ley 172-13)
+ya hecha y aprobada (confirmado 10/09/2026)** — puede usarse con
+estudiantes reales. Nombre confirmado con la fundadora el 10/09/2026;
+**el código (modelo/controller/rutas/mount) recién se puso al día el
+11/09/2026** — hasta entonces seguía llamándose
+`InformacionComplementariaEscolar` en disco pese a que este documento
+ya decía "renombrado". Endpoint: `/api/cuestionario-escolar`.
 
-**Historial de precios:** el plan de entrada se llamó "Normal" a
-RD$1,500 y el más completo "VIP" a RD$7,000 antes del 07/09/2026. Se
-restructuró a 3 niveles (Fundación/Estándar/VIP) el mismo día; el precio
-de Fundación bajó a RD$1,000 tras una corrección pedida por la fundadora
-horas después del cambio inicial (que había quedado en RD$1,500).
-
-**Editable desde el panel:** `admin/planes/page.tsx` (nuevo,
-07/09/2026) — no hace falta tocar código ni Atlas para cambiar precio,
-nombre, frase destacada, características, o activar/desactivar un plan.
-Ver ARQUITECTURA_FRONTEND.md.
-
-## Índices recomendados — sin cambios excepto 1 nuevo
+## Índices recomendados — sin cambios excepto 2 nuevos
 
 - users: único en email; único (sparse) en cedula (NUEVO, 10/09/2026 —
   ver sección 1).
@@ -540,6 +556,10 @@ Ver ARQUITECTURA_FRONTEND.md.
 - **Plan: único compuesto { programa, codigo } (NUEVO, 07/09/2026) — no
   global, para que un mismo código ("vip", por ejemplo) pueda repetirse
   en programas distintos el día que existan.**
+- **sesiones: único compuesto { programaContenido, numero } (NUEVO,
+  11/09/2026, reemplaza el único global que tenía antes solo `numero`
+  — ver sección 4). El índice viejo `numero_1` sigue en Atlas hasta que
+  se dropee a mano o se corra `syncIndexes()`.**
 
 ## Notas de diseño
 
@@ -547,8 +567,8 @@ Ver ARQUITECTURA_FRONTEND.md.
   colecciones donde importa preservar historial (`users`, `examenes`,
   `contenidoSesion`).
 - La purga de datos de prueba tiene un script formal y repetible
-  (`scripts/purgarDatosPrueba.js`, con dry-run por defecto) — ver
-  ARQUITECTURA_BACKEND.md.
+  (`scripts/purgarUsuariosPrueba.js`, con dry-run por defecto — único
+  script de purga desde el 11/09/2026, ver ARQUITECTURA_BACKEND.md).
 
 ## Pendiente (base de datos)
 
@@ -577,11 +597,11 @@ Ver ARQUITECTURA_FRONTEND.md.
 - **CONSTRUIDO (08-09/09/2026): programas Escolar y Empresarial.**
   Colecciones `Grupo` y `CuestionarioEscolar` nuevas (ver
   secciones 22 y 23), `User.grupoId`, `Inscripcion.tipoPlan` con el valor
-  nuevo `"grupo"`. **Decisiones de arquitectura cerradas el 10/09/2026:**
-  `Sesion`/`Examen`/`ContenidoSesion` no se van a duplicar por programa —
-  se les agregará un campo `programaContenido` (`estandar`/`motorista`/
-  `pesados`, todavía no implementado en código) cuando se construyan
-  Motorista/Pesados; Escolar/Empresarial no necesitan nada nuevo aquí,
-  siguen reusando el contenido de `estandar`. **Motorista y — nuevo,
-  10/09/2026 — Pesados (conductores de camiones y trailers) siguen sin
-  diseñar** — es lo único que falta de la lista de programas.
+  nuevo `"grupo"`.
+- **Motorizados y Pesados — en diseño (11/09/2026), base de esquema ya
+  lista.** `Sesion.programaContenido` + índice compuesto ya
+  implementados (sección 4). Falta: sembrar sus `Sesion` reales,
+  decidir cantidad de sesiones, y resolver `Plan` para un programa sin
+  práctica de manejo (nota en la sección 21). Nombre confirmado:
+  **"Motorizados"**, no "Motoristas". Detalle completo en
+  `ANALISIS_MOTORISTA_PESADOS.md`.

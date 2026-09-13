@@ -135,14 +135,14 @@ completo y la tabla de precios/sesiones/costos actual).
 "estandar"`, sin enum cerrado): se agregó en esta misma sesión, antes
   de que existiera ningún documento real de `Plan`, específicamente para
   no tener que migrar después — la fundadora confirmó que además de
-  Escolar/Empresarial ya venían más programas (Motorista, y — agregado
+  Escolar/Empresarial ya venían más programas (Motorizados, y — agregado
   10/09/2026 — Pesados, para conductores de camiones y trailers).
   `programa` (currículo) queda separado de `tipoPlan` (nivel de
   práctica/precio dentro de ese currículo). Ver
   `ESPECIFICACION_PROGRAMAS_NUEVOS.md` para el diseño completo de los
-  programas nuevos — Motorista y Pesados todavía sin diseñar a detalle.
+  programas nuevos — Motorizados y Pesados todavía sin diseñar a detalle.
   **Decisión cerrada (10/09/2026):** `Plan` solo necesita entradas para
-  programas públicos/individuales (`estandar` hoy, Motorista/Pesados el
+  programas públicos/individuales (`estandar` hoy, Motorizados/Pesados el
   día que se inscriban individualmente) — Escolar/Empresarial nunca se
   muestran al público (las instituciones no entran a la app), su precio
   vive solo en `Grupo.precioAcordado`, no necesitan fila en `Plan`.
@@ -154,19 +154,28 @@ completo y la tabla de precios/sesiones/costos actual).
   `precio_plan_normal`/`precio_plan_vip` — esos registros quedan
   huérfanos en Atlas (no se borraron) pero ningún endpoint los lee.
 
-### Decisión cerrada (10/09/2026): modelo de contenido para programas con currículo propio
+### Decisión cerrada (10/09/2026), campo agregado en código (11/09/2026): modelo de contenido para programas con currículo propio
 
-`Sesion`/`Examen`/`ContenidoSesion` **no se van a duplicar por
-programa**. Se les va a agregar un campo `programaContenido`
-(`estandar` | `motorista` | `pesados`, mismo espíritu que `Plan.programa`)
-— **todavía no implementado en código**, es la decisión de diseño ya
-cerrada con la fundadora, pendiente de construir cuando se diseñe
-Motorista/Pesados en detalle. Escolar y Empresarial no entran en este
-campo porque no lo necesitan: como reusan el currículo de `estandar`
-tal cual, sus estudiantes simplemente consumen las `Sesion` con
-`programaContenido: "estandar"` — no hay que crearles nada propio.
-Motorista y Pesados, cuando se diseñen, tendrían su propio conjunto de
-`Sesion`/`Examen`/`ContenidoSesion` marcado con su `programaContenido`.
+`Sesion`/`Examen`/`ContenidoSesion` **no se duplican por programa**.
+`Sesion` ya tiene el campo `programaContenido` (`String`, default
+`"estandar"`, sin enum cerrado — mismo espíritu que `Plan.programa`);
+`Examen`/`ContenidoSesion` no necesitan su propio campo porque
+referencian `sesionId` y quedan filtrados transitivamente. El índice
+único de `Sesion` pasó de `numero` global a `{ programaContenido,
+numero }` compuesto — ver detalle en la sección `Sesion` más abajo,
+incluye un paso de despliegue pendiente (dropear el índice viejo en
+Atlas). Escolar y Empresarial no entran en este campo porque no lo
+necesitan: sus estudiantes consumen las `Sesion` con
+`programaContenido: "estandar"` sin crear nada propio.
+
+Análisis funcional completo de Motorizados/Pesados (flujo de
+inscripción, cambios de esquema necesarios, decisiones abiertas) en
+`ANALISIS_MOTORISTA_PESADOS.md`. **Decisión de nombre (11/09/2026):**
+en construcción (copy y valores de `programa`/`programaContenido`) se
+usa **"Motorizados"**, no "Motoristas" — la fundadora lo señaló como
+un término que puede sonar despectivo. Cuando se construya el
+programa, su valor real va a ser `"motorizados"`, no `"motorizados"`
+como aparece en menciones anteriores de este documento.
 
 ## Autenticación y roles
 
@@ -226,16 +235,36 @@ El resto del controller (`listarUsuarios`, `crearCoordinadora`,
 ### `Sesion` — límite de 4, colección ya recreada (06-13/08/2026)
 
 ```js
-numero: { type: Number, required: true, unique: true, min: 1, max: 4 },
+numero: { type: Number, required: true, min: 1, max: 4 },
+programaContenido: { type: String, default: "estandar" },
 ```
+
+```js
+sesionSchema.index({ programaContenido: 1, numero: 1 }, { unique: true });
+```
+
+**CORREGIDO (11/09/2026):** el índice único era solo sobre `numero`
+(global), lo que habría chocado en cuanto existiera una segunda
+`Sesion { numero: 1 }` para Motorizados/Pesados. Ahora la unicidad es por
+`{ programaContenido, numero }`. **Paso de despliegue pendiente:**
+Mongoose no dropea índices viejos solo — hay que borrar a mano el
+índice `numero_1` en Atlas (o correr `syncIndexes()`) antes de sembrar
+sesiones de un programa nuevo, o Mongo va a seguir rechazando por
+duplicado con el índice viejo todavía activo.
+
+`obtenerSesionParaEstudiante`/`listarSesiones`/`actualizarSesion`
+siguen consultando solo por `numero`, sin filtrar `programaContenido`
+todavía — funciona hoy porque `estandar` es el único programa con
+sesiones reales, pero hay que agregar el filtro antes de sembrar
+Motorizados/Pesados (ver `ANALISIS_MOTORISTA_PESADOS.md`).
 
 El script `scripts/crearSesionesIniciales.js --confirmar` (documentado
 como pendiente en la versión anterior de este archivo) **ya se ejecutó**
-— las 4 sesiones existen en Atlas con títulos provisionales ("Sesión
-1"..."Sesión 4"). Sigue sin haber un `POST /sesiones` — `sesionController.js`
-solo expone `listarSesiones`, `obtenerSesionParaEstudiante` y
-`actualizarSesion` (PATCH). Ver DATABASE.md para el estado real de la
-colección.
+— las 4 sesiones de `estandar` existen en Atlas con títulos
+provisionales ("Sesión 1"..."Sesión 4"). Sigue sin haber un
+`POST /sesiones` — `sesionController.js` solo expone `listarSesiones`,
+`obtenerSesionParaEstudiante` y `actualizarSesion` (PATCH). Ver
+DATABASE.md para el estado real de la colección.
 
 **ACTUALIZADO (05/09/2026):** `obtenerSesionParaEstudiante` ahora exige
 también haber completado `TestPsicologico` antes de devolver el
@@ -441,6 +470,16 @@ Probado de punta a punta en esta sesión — crear chofer, login como
 conductor, notificación al completar teoría, aprobación de práctica y
 generación de diploma condicionada — todo funcionando.
 
+**CORREGIDO (11/09/2026): gate de práctica centralizado.** El criterio
+"¿esta estudiante cursa práctica de manejo?" (antes `!usuario.grupoId`
+repetido de forma independiente en `diplomaController.js` x2,
+`practicaController.js` e `intentoExamenController.js`) ahora vive en
+un solo lugar: `utils/elegibilidadPractica.js#requierePracticaDeManejo`.
+Los 4 call sites lo importan en vez de repetir el `if`. Sin cambio de
+comportamiento — mismo criterio de hoy (`grupoId`), solo se ordenó
+antes de que Motorizados/Pesados (que tampoco van a tener práctica, ver
+`ANALISIS_MOTORISTA_PESADOS.md`) obligaran a tocar una cuarta copia.
+
 ## Diplomas (/api/diplomas)
 
 **ACTUALIZADO (05/09/2026):** `listarElegibles` y `generarDiploma` ahora
@@ -456,7 +495,7 @@ varias sesiones de conversación con la fundadora. Construido en dos
 sesiones: 08/09 (colección `Grupo`, campo `grupoId` en `User`, gates de
 práctica/cuestionario) y 09/09 (formularios de grupo, prorrateo contable
 —**reemplazado el 10/09/2026, ver más abajo**—, cron de reporte diario).
-Motorista y Pesados siguen sin diseñar — ver "Pendiente real" más abajo.
+Motorizados y Pesados siguen sin diseñar — ver "Pendiente real" más abajo.
 
 - **`models/Grupo.js`** — `tipo: "colegio" | "empresa"`,
   `nombreInstitucion`, datos de contacto, `precioAcordado` (total
@@ -469,10 +508,14 @@ Motorista y Pesados siguen sin diseñar — ver "Pendiente real" más abajo.
   cambios en ese flujo). Determina si se exige práctica para el diploma y
   cuál cuestionario previo aplica.
 - **`CuestionarioEscolar`** (colección aparte, NO reusa
-  `TestPsicologico`; nombre confirmado con la fundadora el 10/09/2026 —
-  antes provisional como `InformacionComplementariaEscolar`, sin
-  documentos reales creados todavía, así que no hizo falta migrar
-  nada) — 14 preguntas (12 escala 1-5 + 2 abiertas), gate en
+  `TestPsicologico`; nombre confirmado con la fundadora el 10/09/2026,
+  **código renombrado el 11/09/2026** — hasta entonces el modelo/
+  controller/rutas en disco seguían llamándose
+  `InformacionComplementariaEscolar` pese a que este documento ya decía
+  "renombrado"; quedó corregido: `models/CuestionarioEscolar.js`,
+  `controllers/cuestionarioEscolarController.js`, mount en
+  `POST/GET /api/cuestionario-escolar`) — 14 preguntas (12 escala 1-5 +
+  2 abiertas), gate en
   `sesionController.js#obtenerSesionParaEstudiante`: si `Grupo.tipo ===
 "colegio"` exige esta colección; para todo lo demás (incluido
   Empresarial) sigue exigiendo `TestPsicologico`. **Revisión legal del
@@ -573,6 +616,15 @@ Motorista y Pesados siguen sin diseñar — ver "Pendiente real" más abajo.
   desactivar estudiantes en lote), y `/panel/estudiantes` (ahora muestra
   de qué institución es cada estudiante y permite filtrar por grupo —
   ver más abajo).
+- **BUG CORREGIDO (11/09/2026): no existía ninguna pantalla para ver
+  las respuestas de `CuestionarioEscolar`.** El backend
+  (`GET /api/cuestionario-escolar`) siempre devolvió los datos bien —
+  lo reportó la fundadora como "los test psicológicos de dos
+  estudiantes de un grupo no aparecen", pero no era un bug de datos:
+  nunca se construyó la pantalla, solo existía `/panel/test-psicologico`
+  (que lista `TestPsicologico`, una colección distinta). Se creó
+  `/panel/cuestionario-escolar` (mismo patrón que la de perfil
+  conductual) y su tarjeta en `panel/page.tsx`.
 
 **Desplegado y probado en producción (09/09/2026)** — se creó un grupo
 real, se cargó un roster, y salieron dos bugs que no aparecían en la
@@ -789,18 +841,29 @@ scope `workflow` incluido evita este paso extra.
 
 ## Scripts de mantenimiento (`scripts/`)
 
-- **`purgarDatosPrueba.js`**: sin cambios, ya documentado. Corrido el
-  06/08/2026.
 - **`crearSesionesIniciales.js`**: **ya se ejecutó** (con `--confirmar`)
   — las 4 sesiones existen con títulos provisionales. Este cambio no se
   había registrado formalmente en la versión anterior de este documento;
   queda corregido aquí.
-- **`purgarUsuariosPrueba.js` (NUEVO, 07/09/2026)**: segunda purga,
-  distinta de `purgarDatosPrueba.js` — borra todos los usuarios excepto
-  `maria@test.com` sin importar rol, con cascada actualizada
-  (`TestPsicologico`, `Instructor`, que no existían en el script viejo),
-  y **no toca** `Sesion`/`Examen`/`ContenidoSesion`. Corrido en modo real
-  el 07/09/2026 — ver DATABASE.md para el detalle de lo borrado.
+- **`purgarUsuariosPrueba.js`** — único script de purga del proyecto
+  (borra todos los usuarios excepto `maria@test.com`, sin importar rol,
+  y su cascada asociada). **CORREGIDO Y AMPLIADO (11/09/2026):**
+  - Se eliminó `purgarDatosPrueba.js` — era un archivo duplicado con
+    contenido idéntico a este, sobrante de una purga anterior
+    (06/08/2026); ya no existe ningún otro script de purga.
+  - La cascada ahora también borra `CuestionarioEscolar` (bug: nunca se
+    había agregado cuando se creó esa colección), y borra por completo
+    (sin filtrar por usuario) `Grupo`, `MovimientoContable` y
+    `BalanceMensual` — a pedido explícito de la fundadora, para dejar
+    la base lista para producción con solo la cuenta admin de prueba.
+  - Sigue sin tocar `Sesion`/`Examen`/`ContenidoSesion`/`Plan` (contenido
+    del curso, no datos de prueba de una persona) ni
+    `SolicitudEmpresarial` (leads del formulario de `/empresas` — no se
+    incluyó por no estar explícitamente pedido; agregar a mano si
+    también se quiere limpiar).
+  - Uso sin cambios: `node scripts/purgarUsuariosPrueba.js` (dry-run) /
+    `--confirmar` (real, pide escribir `BORRAR`).
+
 - **`migrarPlanes.js` (NUEVO, 07/09/2026)**: siembra/actualiza los 3
   documentos de `Plan` y reetiqueta inscripciones viejas
   `tipoPlan: "normal"` → `"fundacion"`. Correrlo de nuevo (con
@@ -821,9 +884,6 @@ scope `workflow` incluido evita este paso extra.
 
 ## Pendiente real (backend)
 
-- **RESUELTO (10/09/2026):** revisión legal del test psicológico
-  completo (Ley 172-13) — la fundadora confirmó que ya se hizo y está
-  bien. Puede usarse con estudiantes reales sin este bloqueante.
 - **ALTA PRIORIDAD (28/08/2026): borrar y recrear `ContenidoSesion` +
   `Examen` desde cero.** Ambos se cargaron en una sesión sin documentar,
   pero con defectos serios — PDFs con codificación rota y exámenes con
@@ -854,40 +914,35 @@ scope `workflow` incluido evita este paso extra.
   Si la coordinadora necesita desactivar estudiantes ella misma, hay que
   decidir si se abre `permitirRoles("coordinadora", "admin")` en ambos
   endpoints.
-- **PROGRAMA ESCOLAR/EMPRESARIAL: construido y desplegado (08-09/09/2026),
-  contabilidad simplificada el 10/09/2026** — colección `Grupo`,
-  `User.grupoId`, gates de práctica/cuestionario, formularios de grupo +
-  roster, una sola entrada contable por grupo (ya no prorrateada, ver
-  sección de arriba), cron de reporte diario, y la mejora en
-  `/panel/estudiantes` para distinguir individual vs. grupo. Ver la
-  sección "NUEVO: Programa Escolar/Empresarial" más arriba para el
-  detalle completo. **Decisiones cerradas el 10/09/2026** (antes
-  abiertas en este mismo pendiente):
-  - Nombre de la colección: `CuestionarioEscolar` (confirmado, no
-    `InformacionComplementariaEscolar`).
-  - Revisión legal (Ley 172-13) de las 14 preguntas: hecha, aprobada.
-  - `Sesion`/`Examen`/`ContenidoSesion` de programas con currículo
-    propio: no se duplican colecciones, se les agrega
-    `programaContenido` (`estandar`/`motorista`/`pesados`) — Escolar y
-    Empresarial no necesitan nada nuevo aquí, siguen usando
-    `programaContenido: "estandar"`. Diseño cerrado, **implementación
-    todavía no construida** (se construye junto con Motorista/Pesados).
-  - `Plan`: confirmado que Escolar/Empresarial no necesitan fila propia
-    — su precio vive solo en `Grupo.precioAcordado`.
-  - **Nuevo programa agregado a la lista de diseño: Pesados**
-    (conductores de camiones y trailers, alcance inicial limitado a
-    esos dos tipos de vehículo) — mismo estado que Motorista, currículo
-    propio sin diseñar todavía.
-    **Lo que sigue pendiente de todo esto:**
+- **PROGRAMA ESCOLAR/EMPRESARIAL: construido y desplegado
+  (08-10/09/2026)** — ver la sección "NUEVO: Programa
+  Escolar/Empresarial" más arriba para el detalle completo. Sigue
+  pendiente:
   - Probar el cron de reporte diario en vivo (nunca se esperó a que
     pasaran las 24h reales, ni se disparó a mano con `workflow_dispatch`).
   - Limpiar la cuenta de estudiante "huérfana" que pudo haber quedado de
     la prueba donde salió el bug de `numeroReferencia` (ver esa sección).
-  - **Diseñar Motorista y Pesados en detalle con la fundadora** — es lo
-    único de `ESPECIFICACION_PROGRAMAS_NUEVOS.md`/la lista de programas
-    que no se tocó. Primer paso: sostener con la fundadora la misma
-    conversación de descubrimiento que ya se tuvo para
-    Escolar/Empresarial (sección 5 de ese documento), para cada uno.
+- **DISEÑO DE MOTORIZADOS Y PESADOS — en curso (11/09/2026).**
+  Análisis funcional completo (flujo de inscripción, cambios de
+  esquema, decisiones abiertas) en `ANALISIS_MOTORISTA_PESADOS.md`.
+  Decisiones ya cerradas con la fundadora esta sesión:
+  - Nombre: **"Motorizados"**, no "Motoristas" (puede sonar despectivo)
+    — así se nombra en copy y en el valor real de `programa`/
+    `programaContenido` cuando se construya.
+  - Ambos programas usan el `TestPsicologico` completo (54+5), igual
+    que el resto de los choferes — no necesitan un cuestionario propio
+    corto como `CuestionarioEscolar`.
+  - Se suma a la construcción una pestaña informativa **Educación Vial
+    Escolar** (`/escolar`, mismo patrón que `/empresas`) — Motorizados,
+    Pesados y `estandar` se explican dentro de `/inscripcion`, no como
+    páginas propias.
+  Base técnica ya lista para cuando se construya: `Sesion` soporta
+  `programaContenido` con índice compuesto (ver sección `Sesion`
+  arriba), y el gate de práctica está centralizado en un solo helper.
+  Sigue pendiente: cantidad de sesiones, estructura de precio/`Plan`
+  (sin práctica de manejo, el esquema actual de `Plan` no calza limpio
+  — ver el análisis), y contenido del diploma — preguntas puntuales en
+  `ANALISIS_MOTORISTA_PESADOS.md`, sección 7.
 - Decidir si vale la pena construir `POST /sesiones` (crear sesión desde
   el panel) o si el script de terminal es suficiente a largo plazo.
 - Recordatorios por correo (examen disponible / voucher sin seguimiento):

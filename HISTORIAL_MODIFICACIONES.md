@@ -4,6 +4,102 @@
 > ARQUITECTURA_BACKEND.md, ARQUITECTURA_FRONTEND.md y DATABASE.md, este
 > archivo es solo un changelog, no la fuente de verdad de cómo funciona nada.
 
+## 11/09/2026 — Análisis de Motorizados/Pesados, bug de Cuestionario Escolar corregido, 3 correcciones preparatorias
+
+Sesión de dos partes: primero un documento de análisis
+(`ANALISIS_MOTORISTA_PESADOS.md`) sobre el flujo completo de los
+programas Motorista y Pesados (todavía sin construir), y después, ya
+aprobado el análisis, las correcciones que ese mismo análisis identificó
+como necesarias antes de tocar el código mayor.
+
+**Decisiones cerradas con la fundadora en esta sesión:**
+
+- Nombre: **"Motorizados"**, no "Motoristas" — puede sonar despectivo.
+  Se usa así tanto en copy como en el valor real de `programa`/
+  `programaContenido` cuando se construya el programa.
+- Motorizados y Pesados usan el `TestPsicologico` completo (54+5), igual
+  que el resto de los choferes — no necesitan un cuestionario corto
+  propio.
+- Se agrega una pestaña informativa nueva **"Educación Vial Escolar"**
+  (`/escolar`, mismo patrón que `/empresas`) — Estándar, Motorizados y
+  Pesados en cambio se explican dentro de `/inscripcion`, no como
+  páginas propias.
+- Énfasis explícito de la fundadora: dado el tamaño de los cambios que
+  se vienen, cuidar especialmente que nada de lo que ya funciona se
+  rompa — regresión, no solo feature nueva.
+
+**Bug reportado y confirmado:** la fundadora reportó que las respuestas
+de dos estudiantes de un Grupo no aparecían en el panel al revisar "los
+test psicológicos". No era un bug de datos — `GET /api/cuestionario-
+escolar` (entonces `/informacion-complementaria-escolar`) siempre
+guardó y devolvió bien la información. Nunca se había construido una
+pantalla para verla; solo existía `/panel/test-psicologico`, que lista
+una colección distinta (`TestPsicologico`). Se construyó
+`/panel/cuestionario-escolar`.
+
+**Correcciones aplicadas (backend + frontend):**
+
+1. Rename completo `InformacionComplementariaEscolar` →
+   `CuestionarioEscolar` en código (modelo, controller, rutas, mount en
+   `app.js` como `/api/cuestionario-escolar`, ruta de estudiante
+   `/cuestionario-escolar`, comentarios en `authController.js`,
+   `User.js`, `AuthContext.tsx`, `dashboard/page.tsx`). El documento ya
+   decía "renombrado" desde el 10/09, pero el código en disco seguía
+   con el nombre viejo — quedó sincronizado.
+2. Gate de práctica de manejo centralizado en
+   `utils/elegibilidadPractica.js#requierePracticaDeManejo` — antes el
+   mismo `!grupoId` estaba repetido de forma independiente en
+   `diplomaController.js` (x2), `practicaController.js` e
+   `intentoExamenController.js`. Sin cambio de comportamiento.
+3. Índice de `Sesion` corregido: `numero` dejó de ser único a nivel de
+   campo (único global) y pasó a único compuesto
+   `{ programaContenido, numero }`, con `programaContenido` (default
+   `"estandar"`) agregado al esquema. **Pendiente de despliegue:**
+   dropear a mano el índice viejo `numero_1` en Atlas (o correr
+   `syncIndexes()`) antes de sembrar sesiones de un programa nuevo.
+4. Nueva pantalla `app/(coordinadora)/panel/cuestionario-escolar/page.tsx`
+   (mismo patrón que `panel/test-psicologico/page.tsx`) + su tarjeta en
+   `panel/page.tsx`.
+5. De paso, se corrigió un error de documentación en `DATABASE.md`: el
+   campo real del modelo es `reflexiones`, no `respuestasAbiertas` como
+   estaba escrito ahí; y se reubicó un párrafo sobre historial de
+   precios de `Plan` que había quedado pegado por error bajo la sección
+   de `CuestionarioEscolar`.
+
+**Verificación:** todos los `.js` del backend tocados pasan
+`node --check`. Los `.tsx`/`.ts` del frontend se revisaron a mano
+(llaves balanceadas) — el proyecto no tiene `node_modules` instalado,
+así que no se pudo correr `tsc --noEmit` completo.
+
+**Sigue pendiente** (detalle completo en `ANALISIS_MOTORISTA_PESADOS.md`):
+cantidad de sesiones de Motorizados/Pesados, estructura de precio/`Plan`
+para un programa sin práctica, contenido del diploma, selector de
+programa en `/inscripcion`, página `/escolar`, y dejar de hardcodear
+`SESIONES = [1,2,3,4]` en `dashboard/page.tsx`.
+
+### Continuación misma fecha: purga de datos de prueba ampliada
+
+A pedido de la fundadora, para dejar la base lista para producción con
+solo la cuenta `maria@test.com`:
+
+- **Eliminado `purgarDatosPrueba.js`** — era un duplicado exacto de
+  `purgarUsuariosPrueba.js`, sobrante de una purga anterior. Queda un
+  solo script de purga en el proyecto.
+- **`purgarUsuariosPrueba.js` ampliado:** la cascada ahora también borra
+  `CuestionarioEscolar` (bug: nunca se había agregado a la cascada
+  cuando se creó esa colección) y, sin filtrar por usuario,
+  `Grupo`, `MovimientoContable` y `BalanceMensual` completos. Sigue sin
+  tocar `Sesion`/`Examen`/`ContenidoSesion`/`Plan` ni
+  `SolicitudEmpresarial` (no pedido explícitamente).
+- Se explicó por qué esto se resuelve con un script Node conectado
+  directo a Mongo y no con `curl` contra la API: no existe (ni debería
+  existir) un endpoint HTTP de "borrar todo" — sería un riesgo de
+  seguridad serio si algún día quedara mal protegido.
+- Se documentó el procedimiento para dropear en Atlas el índice viejo
+  `numero_1` de `sesiones` (paso manual, Mongoose no lo hace solo) antes
+  de que el índice compuesto nuevo (`{ programaContenido, numero }`,
+  ver más arriba) tome efecto del todo.
+
 ## 10/09/2026 — Seguridad documentada, cambios menores, bug del Home, y cierre de decisiones de Escolar/Empresarial/Motorista/Pesados
 
 ### Contexto de arranque

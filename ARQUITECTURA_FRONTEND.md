@@ -620,7 +620,36 @@ que salieron en la prueba real, ver más abajo):
     grupo a la vez en vez de intentar clusterizar visualmente una lista
     paginada y ordenada por `createdAt`.
 
-**Bugs encontrados en la prueba real (09/09/2026), ya corregidos** — ver
+## NUEVO: Panel de coordinadora/admin — Cuestionario Escolar (11/09/2026)
+
+**Corrige un bug real, no solo agrega una pantalla.** El backend
+(`GET /api/cuestionario-escolar`, antes
+`/informacion-complementaria-escolar`) siempre guardó bien las
+respuestas de estudiantes de un Grupo tipo "colegio", pero no existía
+ninguna pantalla para verlas — solo `/panel/test-psicologico`, que
+lista una colección distinta (`TestPsicologico`). La fundadora lo
+reportó como "los test psicológicos de dos estudiantes de un grupo no
+aparecen"; no era un bug de datos, era una pantalla que nunca se
+construyó.
+
+- **`app/(coordinadora)/panel/cuestionario-escolar/page.tsx`** (NUEVO)
+  — mismo patrón que `panel/test-psicologico/page.tsx`: lista
+  (`GET /api/cuestionario-escolar`) + detalle expandible por fila
+  (`GET /api/cuestionario-escolar/:userId`). Usa
+  `lib/bancoPreguntasEscolar.ts` para pintar las 12 preguntas de escala
+  agrupadas por sección y las 2 abiertas (campo real `reflexiones` —
+  DATABASE.md lo tenía documentado como `respuestasAbiertas`, corregido
+  ahí también). Sin ningún cálculo de puntaje, igual que el
+  cuestionario mismo.
+- **`app/(coordinadora)/panel/page.tsx`** — tarjeta nueva "Cuestionario
+  Escolar" (ícono `School`) en `MODULOS_CURSO`, junto a "Perfil
+  conductual".
+- **Rename de ruta:** `/informacion-complementaria-escolar` (estudiante)
+  → `/cuestionario-escolar`, alineado con el rename de backend — ver
+  ARQUITECTURA_BACKEND.md. `dashboard/page.tsx` actualizado (redirect y
+  nombre de endpoint).
+
+
 ARQUITECTURA_BACKEND.md para el detalle técnico de cada uno:
 
 1. El warning de React `react-hooks/set-state-in-effect` en las dos
@@ -640,7 +669,8 @@ numeroReferencia."` al agregar una segunda estudiante a un grupo — no
 - Revisar lenguaje de género en `testimonios/page.tsx` y
   `registro/page.tsx`.
 - Reemplazar las fotos de `public/inscripcion/` cuando haya material
-  nuevo que refleje la audiencia ampliada.
+  nuevo que refleje la audiencia ampliada (ahora incluye Motorizados y
+  Pesados — ver bullet de abajo).
 - Construir un formulario en `panel/aula-virtual/page.tsx` para
   renombrar sesiones desde el panel (sigue sin existir; hoy es solo vía
   `PATCH /sesiones/:numero` a mano).
@@ -649,6 +679,21 @@ numeroReferencia."` al agregar una segunda estudiante a un grupo — no
   codificación y un bug de examen (respuesta siempre en A). Ver
   ARQUITECTURA_BACKEND.md y DATABASE.md para el detalle y el plan
   (borrar vía `curl`, recrear).
+- **Frontend de Motorizados y Pesados — pendiente de construir
+  (análisis en `ANALISIS_MOTORISTA_PESADOS.md`).** Decisiones ya
+  cerradas el 11/09/2026:
+  - Nombre en copy y en código: **"Motorizados"**, no "Motoristas".
+  - `/inscripcion`: agrega selector de programa (Estándar/Motorizados/
+    Pesados) antes de elegir plan — no páginas separadas por programa.
+  - Nueva pestaña informativa **"Educación Vial Escolar"**
+    (`/escolar`), mismo patrón que `/empresas` — con suficiente detalle
+    de la oferta para colegios. Agregar el link en
+    `components/layout/Navbar.tsx` (donde ya vive el de "Empresas") y
+    en `app/page.tsx`. Botón de esa página apunta a `/inscripcion` (o
+    al flujo de contacto que ya usa Empresas, a definir con la
+    fundadora igual que se hizo con esa página).
+  - `dashboard/page.tsx`: dejar de hardcodear `SESIONES = [1,2,3,4]`,
+    traerlas filtradas por programa del backend.
 - Texto enriquecido con imágenes incrustadas en `contenidoTexto` — pedido
   identificado, no empezado.
 - Confirmar los valores hex reales de `brand-yellow` y `brand-mamey` en
@@ -669,7 +714,7 @@ numeroReferencia."` al agregar una segunda estudiante a un grupo — no
   está construido (`panel/grupos/`, ver sección de arriba) — el
   pendiente que decía "nada de esto empezado en código todavía" estaba
   desactualizado, quedaba de antes de esas dos sesiones. Lo que sigue
-  realmente sin empezar es el frontend de **Motorista y Pesados**
+  realmente sin empezar es el frontend de **Motorizados y Pesados**
   (conductores de camiones y trailers, nuevo 10/09/2026) — dashboard/
   aula virtual condicionados por `programaContenido` (hoy asumen un
   solo currículo), formularios propios si terminan siendo programas
