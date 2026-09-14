@@ -131,21 +131,16 @@ completo y la tabla de precios/sesiones/costos actual).
   pantalla nueva `admin/planes/page.tsx` (ver ARQUITECTURA_FRONTEND.md).
 - `Inscripcion.tipoPlan` pasó de `["normal","vip"]` a
   `["fundacion","normal","vip"]`.
-- **NUEVO campo `programa`** en `Plan` e `Inscripcion` (`String, default:
-"estandar"`, sin enum cerrado): se agregó en esta misma sesión, antes
+- **Campo `programa`** en `Plan` e `Inscripcion` (`String, default:
+  "estandar"`, sin enum cerrado): se agregó en esta misma sesión, antes
   de que existiera ningún documento real de `Plan`, específicamente para
-  no tener que migrar después — la fundadora confirmó que además de
-  Escolar/Empresarial ya venían más programas (Motorizados, y — agregado
-  10/09/2026 — Pesados, para conductores de camiones y trailers).
-  `programa` (currículo) queda separado de `tipoPlan` (nivel de
-  práctica/precio dentro de ese currículo). Ver
-  `ESPECIFICACION_PROGRAMAS_NUEVOS.md` para el diseño completo de los
-  programas nuevos — Motorizados y Pesados todavía sin diseñar a detalle.
+  no tener que migrar después. `programa` (currículo) queda separado de
+  `tipoPlan` (nivel de práctica/precio dentro de ese currículo).
   **Decisión cerrada (10/09/2026):** `Plan` solo necesita entradas para
-  programas públicos/individuales (`estandar` hoy, Motorizados/Pesados el
-  día que se inscriban individualmente) — Escolar/Empresarial nunca se
-  muestran al público (las instituciones no entran a la app), su precio
-  vive solo en `Grupo.precioAcordado`, no necesitan fila en `Plan`.
+  programas públicos/individuales (`estandar`, y desde el 13/09/2026
+  también Motorizados/Pesados) — Escolar/Empresarial nunca se muestran
+  al público (las instituciones no entran a la app), su precio vive
+  solo en `Grupo.precioAcordado`, no necesitan fila en `Plan`.
 - `scripts/migrarPlanes.js` (nuevo) — siembra/actualiza los 3 planes
   (upsert por `{programa, codigo}`) y reetiquetó las inscripciones viejas
   `tipoPlan: "normal"` a `"fundacion"` (0 documentos migrados en la
@@ -157,25 +152,46 @@ completo y la tabla de precios/sesiones/costos actual).
 ### Decisión cerrada (10/09/2026), campo agregado en código (11/09/2026): modelo de contenido para programas con currículo propio
 
 `Sesion`/`Examen`/`ContenidoSesion` **no se duplican por programa**.
-`Sesion` ya tiene el campo `programaContenido` (`String`, default
+`Sesion` tiene el campo `programaContenido` (`String`, default
 `"estandar"`, sin enum cerrado — mismo espíritu que `Plan.programa`);
 `Examen`/`ContenidoSesion` no necesitan su propio campo porque
 referencian `sesionId` y quedan filtrados transitivamente. El índice
-único de `Sesion` pasó de `numero` global a `{ programaContenido,
-numero }` compuesto — ver detalle en la sección `Sesion` más abajo,
-incluye un paso de despliegue pendiente (dropear el índice viejo en
-Atlas). Escolar y Empresarial no entran en este campo porque no lo
-necesitan: sus estudiantes consumen las `Sesion` con
-`programaContenido: "estandar"` sin crear nada propio.
+único de `Sesion` es `{ programaContenido, numero }` compuesto — ver
+detalle en la sección `Sesion` más abajo. Escolar y Empresarial no
+entran en este campo porque no lo necesitan: sus estudiantes consumen
+las `Sesion` con `programaContenido: "estandar"` sin crear nada propio.
 
-Análisis funcional completo de Motorizados/Pesados (flujo de
-inscripción, cambios de esquema necesarios, decisiones abiertas) en
-`ANALISIS_MOTORISTA_PESADOS.md`. **Decisión de nombre (11/09/2026):**
-en construcción (copy y valores de `programa`/`programaContenido`) se
-usa **"Motorizados"**, no "Motoristas" — la fundadora lo señaló como
-un término que puede sonar despectivo. Cuando se construya el
-programa, su valor real va a ser `"motorizados"`, no `"motorizados"`
-como aparece en menciones anteriores de este documento.
+### Motorizados y Pesados — construidos (13/09/2026)
+
+Dos programas 100% teóricos (sin práctica de manejo), cada uno con su
+propio plan único `codigo: "teorico"` (sin niveles Fundación/Estándar/
+VIP) y sus propias 4 `Sesion` (`programaContenido: "motorizados"` /
+`"pesados"`). Nombre en copy y en código: **"Motorizados"**, no
+"Motoristas" (la fundadora lo señaló como un término que puede sonar
+despectivo).
+
+- `Plan.codigo` acepta `"teorico"`; `modalidadPractica`,
+  `duracionSesionMinutos` y `costoPorSesion` son `required: false` (un
+  plan teórico no tiene práctica, no hay con qué llenarlos).
+- `Inscripcion.tipoPlan` acepta `"teorico"`.
+- `utils/elegibilidadPractica.js` centraliza el criterio de "no requiere
+  práctica" (Motorizados/Pesados, igual que estudiantes con `grupoId`);
+  usado en `diplomaController.js`, `practicaController.js` e
+  `intentoExamenController.js`.
+- `sesionController.js` y `diplomaController.js` filtran por
+  `programaContenido` en sus consultas de `Sesion`.
+- `inscripcionController.js` acepta `programa` del body (default
+  `"estandar"`), valida `tipoPlan` contra la lista válida de ese
+  programa, y lo propaga a `ProgresoEstudiante` al confirmar el pago.
+- `scripts/sembrarMotorizadosPesados.js` — ya corrido en producción
+  (13/09/2026): 4 `Sesion` + plan "teorico" de cada programa
+  (RD$3,500 Motorizados, RD$4,500 Pesados).
+- **Pendiente real:** cargar contenido de estudio y exámenes reales
+  para las 4 sesiones de cada programa (hoy son sesiones vacías, solo
+  con título provisional) — ver "Pendiente real (backend)" al final de
+  este documento. El nombre a mostrar en el PDF del diploma (¿debe
+  decir "Motorizados"/"Pesados" explícito, o alcanza el diseño genérico
+  de hoy?) tampoco está resuelto.
 
 ## Autenticación y roles
 
@@ -246,17 +262,12 @@ sesionSchema.index({ programaContenido: 1, numero: 1 }, { unique: true });
 **CORREGIDO (11/09/2026):** el índice único era solo sobre `numero`
 (global), lo que habría chocado en cuanto existiera una segunda
 `Sesion { numero: 1 }` para Motorizados/Pesados. Ahora la unicidad es por
-`{ programaContenido, numero }`. **Paso de despliegue pendiente:**
-Mongoose no dropea índices viejos solo — hay que borrar a mano el
-índice `numero_1` en Atlas (o correr `syncIndexes()`) antes de sembrar
-sesiones de un programa nuevo, o Mongo va a seguir rechazando por
-duplicado con el índice viejo todavía activo.
+`{ programaContenido, numero }`. El índice viejo `numero_1` ya se
+dropeó en Atlas (13/09/2026) antes de sembrar Motorizados/Pesados.
 
-`obtenerSesionParaEstudiante`/`listarSesiones`/`actualizarSesion`
-siguen consultando solo por `numero`, sin filtrar `programaContenido`
-todavía — funciona hoy porque `estandar` es el único programa con
-sesiones reales, pero hay que agregar el filtro antes de sembrar
-Motorizados/Pesados (ver `ANALISIS_MOTORISTA_PESADOS.md`).
+`obtenerSesionParaEstudiante`/`listarSesiones`/`actualizarSesion` ya
+filtran por `programaContenido` (13/09/2026) — necesario desde que
+existe más de un programa con sesiones reales.
 
 El script `scripts/crearSesionesIniciales.js --confirmar` (documentado
 como pendiente en la versión anterior de este archivo) **ya se ejecutó**
@@ -477,8 +488,9 @@ repetido de forma independiente en `diplomaController.js` x2,
 un solo lugar: `utils/elegibilidadPractica.js#requierePracticaDeManejo`.
 Los 4 call sites lo importan en vez de repetir el `if`. Sin cambio de
 comportamiento — mismo criterio de hoy (`grupoId`), solo se ordenó
-antes de que Motorizados/Pesados (que tampoco van a tener práctica, ver
-`ANALISIS_MOTORISTA_PESADOS.md`) obligaran a tocar una cuarta copia.
+antes de que Motorizados/Pesados (que tampoco tienen práctica, ver
+sección "Motorizados y Pesados" más arriba) obligaran a tocar una
+cuarta copia.
 
 ## Diplomas (/api/diplomas)
 
@@ -495,7 +507,6 @@ varias sesiones de conversación con la fundadora. Construido en dos
 sesiones: 08/09 (colección `Grupo`, campo `grupoId` en `User`, gates de
 práctica/cuestionario) y 09/09 (formularios de grupo, prorrateo contable
 —**reemplazado el 10/09/2026, ver más abajo**—, cron de reporte diario).
-Motorizados y Pesados siguen sin diseñar — ver "Pendiente real" más abajo.
 
 - **`models/Grupo.js`** — `tipo: "colegio" | "empresa"`,
   `nombreInstitucion`, datos de contacto, `precioAcordado` (total
@@ -931,30 +942,23 @@ InformacionComplementariaEscolar")` activo (no un comentario, código
     pasaran las 24h reales, ni se disparó a mano con `workflow_dispatch`).
   - Limpiar la cuenta de estudiante "huérfana" que pudo haber quedado de
     la prueba donde salió el bug de `numeroReferencia` (ver esa sección).
-- **DISEÑO DE MOTORIZADOS Y PESADOS — en curso (11/09/2026).**
-  Análisis funcional completo (flujo de inscripción, cambios de
-  esquema, decisiones abiertas) en `ANALISIS_MOTORISTA_PESADOS.md`.
-  Decisiones ya cerradas con la fundadora esta sesión:
-  - Nombre: **"Motorizados"**, no "Motoristas" (puede sonar despectivo)
-    — así se nombra en copy y en el valor real de `programa`/
-    `programaContenido` cuando se construya.
-  - Ambos programas usan el `TestPsicologico` completo (54+5), igual
-    que el resto de los choferes — no necesitan un cuestionario propio
-    corto como `CuestionarioEscolar`.
-  - Se suma a la construcción una pestaña informativa **Educación Vial
-    Escolar** (`/escolar`, mismo patrón que `/empresas`) — Motorizados,
-    Pesados y `estandar` se explican dentro de `/inscripcion`, no como
-    páginas propias.
-  - **RESUELTO (13/09/2026):** 4 sesiones cada uno (igual que
-    `estandar`), y un solo plan por programa sin niveles (sin práctica
-    de manejo). Ver `ANALISIS_MOTORISTA_PESADOS.md`, sección 7.
-    Base técnica ya lista: `Sesion` soporta `programaContenido` con
-    índice compuesto (ver sección `Sesion` arriba), y el gate de práctica
-    está centralizado en un solo helper. **CONSTRUCCIÓN TODAVÍA NO
-    EMPEZADA** — lo hecho hasta el 13/09/2026 es solo preparación técnica,
-    no el programa en sí (nada visible en `/inscripcion`, el panel, ni el
-    dashboard). Se retoma en una sesión de trabajo dedicada — ver el
-    orden de trabajo en la sección 8 del análisis, pasos 2 en adelante.
+- **MOTORIZADOS Y PESADOS — construidos y desplegados (13/09/2026).**
+  Ver la sección "Motorizados y Pesados" más arriba para el detalle
+  completo. Sigue pendiente:
+  - Cargar contenido de estudio y exámenes reales para las 4 sesiones de
+    cada programa (hoy están sembradas pero vacías, solo con título
+    provisional) — con **varias versiones activas por sesión desde el
+    día uno**, para no repetir el problema que tuvo `estandar` de quedar
+    con una sola versión.
+  - Decidir si el PDF del diploma debe mostrar explícitamente
+    "Motorizados"/"Pesados" o alcanza el diseño genérico de hoy.
+  - Para Pesados: confirmar si camión y trailer comparten exactamente
+    las mismas 4 sesiones o en algún punto necesitan contenido distinto
+    (si diverge, probablemente conviene un campo `subtipo` en vez de un
+    tercer `programaContenido`).
+  - Probar de punta a punta: inscripción → pago → cuestionario → 4
+    sesiones → exámenes con selección aleatoria real → diploma sin
+    pedir práctica.
 - Decidir si vale la pena construir `POST /sesiones` (crear sesión desde
   el panel) o si el script de terminal es suficiente a largo plazo.
 - Recordatorios por correo (examen disponible / voucher sin seguimiento):

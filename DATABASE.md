@@ -197,17 +197,17 @@ escribiendo ahí para precios. El resto de `configuracion` (lo que no sea
 Índice: `{ programaContenido: 1, numero: 1 }`, único. **CORREGIDO
 (11/09/2026):** antes `numero` tenía `unique: true` a nivel de campo
 (único global) — con eso, una `Sesion { numero: 1 }` para Motorizados
-habría chocado como duplicado contra la de `estandar`. **Paso de
-despliegue pendiente:** el índice viejo `numero_1` sigue existiendo en
-Atlas hasta que se dropee a mano o se corra `syncIndexes()` — hacerlo
-antes de sembrar sesiones de un programa nuevo.
+habría chocado como duplicado contra la de `estandar`. El índice viejo
+`numero_1` ya se dropeó en Atlas (13/09/2026), antes de sembrar las
+sesiones de Motorizados/Pesados.
 
-4 documentos existentes (todos `programaContenido: "estandar"` por el
-`default`) con títulos **todavía provisionales** ("Sesión 1"..."Sesión
-4") — confirmado el 28/08/2026 revisando la pantalla real del aula
-virtual (el `<h1>` sigue mostrando "Sesión 1", no un tema real).
-Renombrarlos a los temas reales es una simple actualización de `titulo`
-vía `PATCH /sesiones/:numero`, no requiere cambio de esquema ni de
+4 documentos con `programaContenido: "estandar"` (títulos todavía
+provisionales, "Sesión 1"..."Sesión 4" — confirmado el 28/08/2026
+revisando la pantalla real del aula virtual) + 4 con `"motorizados"` y
+4 con `"pesados"` (sembrados el 13/09/2026, también con título
+provisional, sin contenido/exámenes reales todavía). Renombrarlos a
+los temas reales es una simple actualización de `titulo` vía
+`PATCH /sesiones/:numero`, no requiere cambio de esquema ni de
 código. **Aclaración importante:** esto es distinto de los títulos de
 `ContenidoSesion` (ver más abajo) — esos sí tienen nombres reales
 ("1.1 Bienvenida a Muvo RD Vial", etc.), pero son los títulos de cada
@@ -442,6 +442,15 @@ reales:
 | normal    | Plan Estándar                           | RD$4,500 | individual | 8 sesiones de 60 min        | RD$500             |
 | vip       | Plan VIP                                | RD$7,500 | individual | 10 sesiones de 60 min       | RD$500             |
 
+**Motorizados y Pesados (13/09/2026)** — un solo plan por programa,
+`codigo: "teorico"`, sin los 4 campos de práctica (`required: false`
+en el esquema, no aplican a un programa sin práctica de manejo):
+
+| programa    | codigo  | nombre | precio  |
+| ----------- | ------- | ------ | ------- |
+| motorizados | teorico | Teoría de Motorizados | RD$3,500 |
+| pesados     | teorico | Teoría de Pesados     | RD$4,500 |
+
 VIP incluye además en `caracteristicas`: acompañamiento al INTRANT,
 preparación para su examen teórico, instrucciones para el examen del
 permiso de aprendizaje, e instrucciones para el examen práctico de la
@@ -456,10 +465,7 @@ horas después del cambio inicial (que había quedado en RD$1,500).
 **Editable desde el panel:** `admin/planes/page.tsx` (nuevo,
 07/09/2026) — no hace falta tocar código ni Atlas para cambiar precio,
 nombre, frase destacada, características, o activar/desactivar un plan.
-Ver ARQUITECTURA_FRONTEND.md. **Nota (11/09/2026):** el esquema actual
-asume práctica de manejo en 4 campos `required` — no calza limpio con
-un programa 100% teórico como Motorizados/Pesados. Ver decisión
-pendiente en `ANALISIS_MOTORISTA_PESADOS.md`, sección 3.
+Ver ARQUITECTURA_FRONTEND.md.
 
 ---
 
@@ -524,8 +530,8 @@ tipo colegio con estudiantes menores sin cédula.
 Cuestionario informativo de 14 preguntas (12 + 2 abiertas) para
 estudiantes de Escolar (`Grupo.tipo === "colegio"`) — reemplaza a
 `TestPsicologico` solo para ellas; Empresarial sigue usando el test
-completo igual que `estandar`, y lo mismo va a aplicar a Motorizados y
-Pesados (confirmado 11/09/2026, ver `ANALISIS_MOTORISTA_PESADOS.md`).
+completo igual que `estandar`, y lo mismo aplica a Motorizados y
+Pesados (construido 13/09/2026).
 Colección deliberadamente separada, no reusa `TestPsicologico` —
 preguntas sobre conocimiento vial y logística, sin ningún eje de
 autocontrol/estrés/percepción de riesgo. **Revisión legal (Ley 172-13)
@@ -598,10 +604,8 @@ ya decía "renombrado". Endpoint: `/api/cuestionario-escolar`.
   Colecciones `Grupo` y `CuestionarioEscolar` nuevas (ver
   secciones 22 y 23), `User.grupoId`, `Inscripcion.tipoPlan` con el valor
   nuevo `"grupo"`.
-- **Motorizados y Pesados — en diseño (11/09/2026), base de esquema ya
-  lista.** `Sesion.programaContenido` + índice compuesto ya
-  implementados (sección 4). Falta: sembrar sus `Sesion` reales,
-  decidir cantidad de sesiones, y resolver `Plan` para un programa sin
-  práctica de manejo (nota en la sección 21). Nombre confirmado:
-  **"Motorizados"**, no "Motoristas". Detalle completo en
-  `ANALISIS_MOTORISTA_PESADOS.md`.
+- **CONSTRUIDO (13/09/2026): Motorizados y Pesados.**
+  `Sesion.programaContenido` + índice compuesto (sección 4), 4 `Sesion`
+  + plan `"teorico"` de cada uno ya sembrados (sección 21). Falta
+  cargar contenido/exámenes reales en esas sesiones — ver
+  ARQUITECTURA_BACKEND.md, "Pendiente real".

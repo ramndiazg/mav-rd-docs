@@ -679,21 +679,26 @@ numeroReferencia."` al agregar una segunda estudiante a un grupo — no
   codificación y un bug de examen (respuesta siempre en A). Ver
   ARQUITECTURA_BACKEND.md y DATABASE.md para el detalle y el plan
   (borrar vía `curl`, recrear).
-- **Frontend de Motorizados y Pesados — pendiente de construir
-  (análisis en `ANALISIS_MOTORISTA_PESADOS.md`).** Decisiones ya
-  cerradas el 11/09/2026:
-  - Nombre en copy y en código: **"Motorizados"**, no "Motoristas".
-  - `/inscripcion`: agrega selector de programa (Estándar/Motorizados/
-    Pesados) antes de elegir plan — no páginas separadas por programa.
-  - Nueva pestaña informativa **"Educación Vial Escolar"**
-    (`/escolar`), mismo patrón que `/empresas` — con suficiente detalle
-    de la oferta para colegios. Agregar el link en
-    `components/layout/Navbar.tsx` (donde ya vive el de "Empresas") y
-    en `app/page.tsx`. Botón de esa página apunta a `/inscripcion` (o
-    al flujo de contacto que ya usa Empresas, a definir con la
-    fundadora igual que se hizo con esa página).
-  - `dashboard/page.tsx`: dejar de hardcodear `SESIONES = [1,2,3,4]`,
-    traerlas filtradas por programa del backend.
+- **Frontend de Motorizados y Pesados — construido (13/09/2026).**
+  Nombre en copy y en código: **"Motorizados"**, no "Motoristas".
+  - `/inscripcion`: selector de programa (Estándar/Motorizados/Pesados)
+    antes de elegir plan, con preselección vía `?programa=` en la URL.
+  - `dashboard/page.tsx`: `requierePractica` ya depende de
+    `progreso.programa`, no solo de `grupoId` — Motorizados/Pesados no
+    tienen práctica. `SESIONES = [1,2,3,4]` se dejó fijo a propósito
+    (las 3 programas comparten el mismo límite de 4 sesiones).
+  - `panel/aula-virtual/page.tsx` y `panel/examenes/page.tsx`: pestañas
+    de programa para filtrar qué se gestiona.
+  - `admin/planes/page.tsx`: selector de programa; oculta los campos de
+    práctica cuando `plan.codigo === "teorico"`.
+  - `app/page.tsx` (home): tarjetas de categoría después del Hero
+    (Livianos/Motocicletas/Pesados), cada una con su imagen y su link a
+    `/inscripcion?programa=...`; bloque propio en "Planes y precios" con
+    el plan real de cada programa. `RutaProtegida`/`login`/`registro`
+    propagan `?redirect=` para no perder el programa elegido si la
+    persona no tenía sesión iniciada.
+  - **Pendiente:** nueva pestaña informativa **"Educación Vial Escolar"**
+    (`/escolar`, mismo patrón que `/empresas`) — todavía no construida.
 - Texto enriquecido con imágenes incrustadas en `contenidoTexto` — pedido
   identificado, no empezado.
 - Confirmar los valores hex reales de `brand-yellow` y `brand-mamey` en
@@ -710,13 +715,10 @@ numeroReferencia."` al agregar una segunda estudiante a un grupo — no
   instructor (hoy la estudiante contacta directo, sin asignación),
   revisar `PantallaListaParaPractica` en `dashboard/page.tsx` — hoy
   asume que siempre se muestra la lista completa de choferes activos.
-- **ACTUALIZADO (10/09/2026):** el frontend de Escolar/Empresarial ya
-  está construido (`panel/grupos/`, ver sección de arriba) — el
-  pendiente que decía "nada de esto empezado en código todavía" estaba
-  desactualizado, quedaba de antes de esas dos sesiones. Lo que sigue
-  realmente sin empezar es el frontend de **Motorizados y Pesados**
-  (conductores de camiones y trailers, nuevo 10/09/2026) — dashboard/
-  aula virtual condicionados por `programaContenido` (hoy asumen un
-  solo currículo), formularios propios si terminan siendo programas
-  individuales en vez de por `Grupo`. Depende de que se diseñe primero
-  el currículo de cada uno con la fundadora (ver ARQUITECTURA_BACKEND.md).
+- **ACTUALIZADO (13/09/2026):** el frontend de Escolar/Empresarial y el
+  de **Motorizados y Pesados** ya están construidos (ver secciones de
+  arriba) — las notas que decían "sin empezar" quedaban desactualizadas.
+  Lo que sigue pendiente es solo la pestaña informativa "Educación Vial
+  Escolar" (`/escolar`) y cargar contenido/exámenes reales para las 4
+  sesiones de Motorizados/Pesados (ver ARQUITECTURA_BACKEND.md,
+  "Pendiente real").
