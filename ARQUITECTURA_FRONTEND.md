@@ -620,6 +620,57 @@ que salieron en la prueba real, ver más abajo):
     grupo a la vez en vez de intentar clusterizar visualmente una lista
     paginada y ordenada por `createdAt`.
 
+## NUEVO: Cobertura de práctica de manejo — Livianos (13-16/09/2026)
+
+Dentro de `/inscripcion` con `programa: "estandar"`, la estudiante ya no
+ve siempre los mismos 3 planes — depende de si su municipio tiene
+cobertura de práctica presencial. Ver ARQUITECTURA_BACKEND.md para el
+detalle del backend (`MunicipioPractica`, validación real en
+`inscripcionController.js`).
+
+- **`app/registro/page.tsx`** — select de municipio en cascada, debajo
+  del de provincia (se limpia al cambiar de provincia). Datos desde
+  `GET /api/ubicaciones/provincias-municipios` (`src/data/municipiosRD.js`
+  en el backend), no un array duplicado en el frontend.
+- **`contexts/AuthContext.tsx`** — `Usuario` gana `provincia`/`municipio`
+  (antes no estaban tipados pese a que el backend ya los devolvía);
+  `DatosRegistro` gana `municipio`.
+- **`app/inscripcion/page.tsx`** — consulta
+  `GET /api/municipios-practica/cobertura` con el `provincia`/`municipio`
+  de la estudiante logueada; si no hay cobertura (o si la cuenta es
+  vieja y no tiene `municipio` guardado), filtra la lista de planes a
+  solo "Solo Teórico" y muestra un aviso explicando por qué. Con
+  cobertura, se ven los 4 planes de `estandar` normalmente.
+  - **Refactor (16/09/2026):** la primera versión sincronizaba
+    `cargandoPlanes`, `cobertura` y `tipoPlan` con `setState` dentro de
+    `useEffect`, lo que disparaba el lint
+    `react-hooks/set-state-in-effect` (render en cascada real, no solo
+    ruido del linter). Se reescribió como estado **derivado**: se guarda
+    de qué programa son los planes en memoria (`planesDe`) y el "cargando"
+    sale de comparar contra el programa actual; la cobertura de una
+    cuenta sin municipio se resuelve sin tocar el estado; y el plan
+    realmente seleccionado (`tipoPlanEfectivo`) se calcula a partir de la
+    elección explícita de la estudiante más la lista de planes
+    disponibles, en vez de un efecto de reconciliación aparte. Cero
+    `setState` síncronos dentro de un efecto en este archivo tras el
+    refactor.
+- **`app/dashboard/page.tsx`** — tercer criterio en `requierePractica`:
+  `progreso?.tipoPlan !== "teorico"`, junto a los dos que ya existían
+  (`grupoId`, `programa` de Motorizados/Pesados).
+- **`app/(admin)/admin/cobertura-practica/page.tsx`** (NUEVO) — mismo
+  patrón que `admin/planes/page.tsx`: agregar municipio (dos `<select>`
+  encadenados, el segundo ya excluye los municipios que esa provincia
+  tiene agregados), lista con toggle activar/desactivar. Tarjeta nueva
+  en `panel/page.tsx` ("Cobertura de práctica", ícono `MapPin`).
+
+**Lección operativa de esta sesión:** el primer despliegue a Render
+dejó fuera el cambio a `app.js` que monta las rutas nuevas (ver
+ARQUITECTURA_BACKEND.md) — el frontend estaba desplegado y andando
+correctamente, pero los `fetch` a los dos endpoints nuevos daban 404.
+Diagnosticado comparando directamente el `app.js` real en GitHub contra
+lo esperado, en vez de asumir que "si el resto del código llegó, este
+archivo también".
+
 ## NUEVO: Panel de coordinadora/admin — Cuestionario Escolar (11/09/2026)
 
 **Corrige un bug real, no solo agrega una pantalla.** El backend
@@ -648,8 +699,7 @@ construyó.
   → `/cuestionario-escolar`, alineado con el rename de backend — ver
   ARQUITECTURA_BACKEND.md. `dashboard/page.tsx` actualizado (redirect y
   nombre de endpoint).
-
-
+## Pendiente real (frontend) — bugs corregidos y notas de esta sesión, ver
 ARQUITECTURA_BACKEND.md para el detalle técnico de cada uno:
 
 1. El warning de React `react-hooks/set-state-in-effect` en las dos
@@ -722,3 +772,8 @@ numeroReferencia."` al agregar una segunda estudiante a un grupo — no
   Escolar" (`/escolar`) y cargar contenido/exámenes reales para las 4
   sesiones de Motorizados/Pesados (ver ARQUITECTURA_BACKEND.md,
   "Pendiente real").
+- **ACTUALIZADO (16/09/2026):** el frontend de **Cobertura de práctica
+  de manejo** también está construido (ver sección propia más arriba).
+  Pendiente real: ninguno específico de frontend — el único pendiente
+  real de esta pieza es de datos (verificar `municipiosRD.js` contra una
+  fuente oficial, ver ARQUITECTURA_BACKEND.md y DATABASE.md sección 24).

@@ -62,7 +62,7 @@ definidos los temas reales.
 
 ---
 
-## 1. users — cédula ahora opcional (10/09/2026), + valor de rol "conductor" (05/09/2026)
+## 1. users — cédula ahora opcional (10/09/2026), + valor de rol "conductor" (05/09/2026), + `municipio` (13/09/2026)
 
 ```js
 {
@@ -85,6 +85,14 @@ definidos los temas reales.
   email: String,           // único
   passwordHash: String,    // bcrypt
   provincia: String,
+  // NUEVO (13/09/2026): municipio dentro de la provincia — se pide junto
+  // a provincia en /registro (select en cascada, datos en
+  // src/data/municipiosRD.js). default: null para las cuentas creadas
+  // antes de este campo (decisión: sin migración) — se tratan igual que
+  // "municipio sin cobertura de práctica" al inscribirse en "estandar".
+  // Ver "NUEVO: Cobertura de práctica de manejo" en
+  // ARQUITECTURA_BACKEND.md y sección 24 (municipiosPractica) más abajo.
+  municipio: { type: String, default: null },
   fechaNacimiento: Date,
   rol: String,             // 'estudiante' | 'coordinadora' | 'admin' | 'conductor'
                             // 'conductor' agregado 05/09/2026 — instructor
@@ -143,10 +151,22 @@ de un mismo programa, la diferencia real está en la práctica de manejo.
 Ver ARQUITECTURA_BACKEND.md para el detalle de los dos flujos de pago.
 
 **NUEVO valor de `tipoPlan` (09/09/2026): `"grupo"`.** Enum completo
-ahora `["fundacion","normal","vip","grupo"]`. Exclusivo de estudiantes
-creadas por un `Grupo` (Escolar/Empresarial, ver sección 22) — no tienen
-nivel individual de plan, el precio vive solo en `Grupo.precioAcordado`,
-nunca pasa por la colección `Plan` (**decisión reconfirmada 10/09/2026**).
+ahora `["fundacion","normal","vip","grupo","teorico"]` (`"teorico"`
+agregado 13/09/2026 para Motorizados/Pesados — ver más abajo).
+`"grupo"` es exclusivo de estudiantes creadas por un `Grupo`
+(Escolar/Empresarial, ver sección 22) — no tienen nivel individual de
+plan, el precio vive solo en `Grupo.precioAcordado`, nunca pasa por la
+colección `Plan` (**decisión reconfirmada 10/09/2026**).
+
+**NUEVO (13/09/2026): `"teorico"` ahora también es válido dentro de
+`programa: "estandar"`, no solo en Motorizados/Pesados.** Es el mismo
+valor de enum, dos combinaciones distintas de `programa`+`tipoPlan` —
+no hizo falta un valor nuevo. Nace de "Cobertura de práctica de manejo"
+(ver ARQUITECTURA_BACKEND.md y sección 24, `municipiosPractica`, más
+abajo): si el municipio de la estudiante no tiene cobertura de práctica
+presencial, solo puede elegir el plan `teorico` de `estandar` (mismo
+curso teórico completo, sin práctica) en vez de
+fundacion/normal/vip.
 
 **CAMBIO (10/09/2026): `monto` en inscripciones de `Grupo` ya es solo
 referencia interna, no contabilidad real.** Sigue calculándose igual
@@ -240,7 +260,7 @@ documento.
 
 ## 6. intentosExamen — sin cambios de esquema, colección vacía
 
-## 7. progresoEstudiante — NUEVOS campos de práctica (05/09/2026)
+## 7. progresoEstudiante — NUEVOS campos de práctica (05/09/2026), `programa` (13/09/2026), `tipoPlan` (13/09/2026)
 
 ```js
 {
@@ -251,6 +271,23 @@ documento.
   cursoCompletado: Boolean,       // 4 sesiones + 4 exámenes aprobados
   contenidosVistos: [ObjectId],   // ref: contenidoSesion
   fechasAprobacionSesion: [{ sesion: Number, fecha: Date }],
+
+  // NUEVO (13/09/2026, documentado ahora): espejo de Inscripcion.programa,
+  // copiado UNA SOLA VEZ al confirmar el pago (no se vuelve a tocar
+  // después). default "estandar". Permite filtrar Sesion por
+  // programaContenido sin un segundo lookup a Inscripcion — ver
+  // ARQUITECTURA_BACKEND.md, "Motorizados y Pesados".
+  programa: { type: String, default: "estandar" },
+
+  // NUEVO (13/09/2026): mismo mecanismo que `programa` — espejo de
+  // Inscripcion.tipoPlan, copiado una sola vez al confirmar el pago.
+  // default: null. Necesario porque, a diferencia de Motorizados/Pesados
+  // (donde TODO el programa es teórico), dentro de "estandar" conviven
+  // planes con y sin práctica — el criterio de si aplica la práctica ya
+  // no puede depender solo de `programa`. Ver
+  // utils/elegibilidadPractica.js y "NUEVO: Cobertura de práctica de
+  // manejo" en ARQUITECTURA_BACKEND.md.
+  tipoPlan: { type: String, default: null },
 
   // NUEVO — seguimiento de práctica de manejo. Requisito adicional y
   // separado de cursoCompletado; ambos son necesarios para generar el
@@ -416,7 +453,10 @@ desde un panel de admin aparte (`/admin/notificaciones-practica`).
   programa: String,        // default "estandar" — sin enum cerrado, a
                             // propósito, por los programas futuros
                             // (escolar/empresarial/motorizados)
-  codigo: String,           // enum: 'fundacion' | 'normal' | 'vip'
+  codigo: String,           // enum: 'fundacion' | 'normal' | 'vip' | 'teorico'
+                            // ('teorico' agregado 13/09/2026 — antes solo
+                            // Motorizados/Pesados, desde 13/09/2026 también
+                            // dentro de programa "estandar", ver más abajo)
   nombre: String,
   precio: Number,
   fraseDestacada: String,   // copy corto, tarjetas del Home
@@ -450,6 +490,20 @@ en el esquema, no aplican a un programa sin práctica de manejo):
 | ----------- | ------- | ------ | ------- |
 | motorizados | teorico | Teoría de Motorizados | RD$3,500 |
 | pesados     | teorico | Teoría de Pesados     | RD$4,500 |
+
+**Cobertura de práctica de manejo — `estandar`/`teorico` (13-16/09/2026)**
+— cuarto plan dentro de `programa: "estandar"`, mismo `codigo: "teorico"`
+que Motorizados/Pesados pero como combinación `programa`+`codigo`
+distinta. Sembrado por `scripts/sembrarPlanEstandarTeorico.js`. Se ofrece
+solo a estudiantes cuyo municipio no tiene cobertura de práctica
+presencial (ver sección 24, `municipiosPractica`, y "NUEVO: Cobertura de
+práctica de manejo" en ARQUITECTURA_BACKEND.md) — con cobertura, sigue
+viendo los 3 planes de siempre (fundacion/normal/vip) más este, todos
+seleccionables.
+
+| programa | codigo  | nombre              | precio |
+| -------- | ------- | ------------------- | ------ |
+| estandar | teorico | Plan Solo Teórico    | RD$0 (provisional — ajustar desde `admin/planes`) |
 
 VIP incluye además en `caracteristicas`: acompañamiento al INTRANT,
 preparación para su examen teórico, instrucciones para el examen del
@@ -542,6 +596,55 @@ estudiantes reales. Nombre confirmado con la fundadora el 10/09/2026;
 `InformacionComplementariaEscolar` en disco pese a que este documento
 ya decía "renombrado". Endpoint: `/api/cuestionario-escolar`.
 
+## 24. municipiosPractica — NUEVA (13-16/09/2026)
+
+```js
+{
+  _id: ObjectId,
+  provincia: String,   // required — mismo texto exacto que User.provincia
+                        // y src/data/municipiosRD.js (sin tildes)
+  municipio: String,    // required
+  activo: Boolean,       // default true — desactivar no borra la fila ni
+                          // afecta a quien ya se inscribió, solo cambia lo
+                          // que se le ofrece a estudiantes nuevas
+  createdAt: Date, updatedAt: Date
+}
+```
+
+Whitelist de municipios con cobertura de práctica de manejo presencial
+(programa `"estandar"`). **Deliberadamente no sembrada con los ~160
+municipios del país en `false`** — solo contiene las filas que en algún
+momento tuvieron cobertura; agregar cobertura nueva es agregar una fila,
+no activar una que ya existía en `false`. Editable desde
+`admin/cobertura-practica` (ver ARQUITECTURA_FRONTEND.md) sin tocar
+código ni Atlas.
+
+Sembrada por `scripts/sembrarCoberturaPractica.js` con los 8 municipios
+iniciales confirmados por la fundadora:
+
+| provincia         | municipio           |
+| ------------------ | -------------------- |
+| Distrito Nacional  | Distrito Nacional    |
+| Santo Domingo      | Santo Domingo Este   |
+| Santo Domingo      | Santo Domingo Oeste  |
+| Santo Domingo      | Santo Domingo Norte  |
+| Santiago           | Santiago              |
+| San Cristobal      | San Cristobal         |
+| Santiago           | Navarrete             |
+| Monsenor Nouel     | Bonao                 |
+
+Índice único compuesto `{ provincia: 1, municipio: 1 }` — evita agregar
+la misma cobertura dos veces por error desde el panel.
+
+`src/data/municipiosRD.js` (no es una colección de Mongo, vive en el
+código del backend) es la referencia de las 32 provincias / ~160
+municipios de RD que alimenta los `<select>` en cascada de `/registro`,
+`/inscripcion` y `admin/cobertura-practica` vía
+`GET /api/ubicaciones/provincias-municipios`. **Pendiente de
+verificación** (ver "Pendiente (base de datos)" más abajo): se compiló
+de fuentes públicas generales, no de un archivo oficial de la JCE/ONE
+verificado línea por línea.
+
 ## Índices recomendados — sin cambios excepto 2 nuevos
 
 - users: único en email; único (sparse) en cedula (NUEVO, 10/09/2026 —
@@ -566,6 +669,8 @@ ya decía "renombrado". Endpoint: `/api/cuestionario-escolar`.
   11/09/2026, reemplaza el único global que tenía antes solo `numero`
   — ver sección 4). El índice viejo `numero_1` sigue en Atlas hasta que
   se dropee a mano o se corra `syncIndexes()`.**
+- **municipiosPractica: único compuesto { provincia, municipio } (NUEVO,
+  13/09/2026 — ver sección 24).**
 
 ## Notas de diseño
 
@@ -609,3 +714,15 @@ ya decía "renombrado". Endpoint: `/api/cuestionario-escolar`.
   + plan `"teorico"` de cada uno ya sembrados (sección 21). Falta
   cargar contenido/exámenes reales en esas sesiones — ver
   ARQUITECTURA_BACKEND.md, "Pendiente real".
+- **CONSTRUIDO (13-16/09/2026): Cobertura de práctica de manejo
+  (`estandar`).** Colección `municipiosPractica` nueva (sección 24),
+  `User.municipio`, `ProgresoEstudiante.tipoPlan`, plan
+  `estandar`/`teorico` — ambos scripts ya corridos en producción
+  (16/09/2026). **Pendiente real:** `src/data/municipiosRD.js` (las 32
+  provincias / ~160 municipios que alimentan los `<select>`) se compiló
+  de fuentes públicas generales en la misma sesión, no de un archivo
+  oficial de la JCE/ONE verificado línea por línea — vale un repaso,
+  sobre todo en San Cristóbal, Monte Plata y San Pedro de Macorís, antes
+  de confiar en que cubre todos los casos reales. Precio del plan
+  `estandar`/`teorico` quedó en RD$0 (provisional) — falta que la
+  fundadora lo defina y se actualice desde `admin/planes`.

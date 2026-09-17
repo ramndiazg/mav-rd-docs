@@ -1,10 +1,20 @@
 # Análisis — Cobertura geográfica de la práctica de manejo (cerrado)
 
+> **IMPLEMENTADO (13-16/09/2026).** Todo lo que este documento describe
+> como diseño ya está construido y desplegado en producción. El estado
+> real y detallado vive ahora en `ARQUITECTURA_BACKEND.md` (sección
+> "Cobertura de práctica de manejo"), `ARQUITECTURA_FRONTEND.md` (misma
+> sección) y `DATABASE.md` (sección 24, `municipiosPractica`) — este
+> documento queda como registro histórico de las decisiones y el diseño
+> original, no como fuente de verdad de cómo funciona el sistema hoy.
+> Único pendiente real que salió de la construcción: verificar
+> `src/data/municipiosRD.js` contra una fuente oficial de la JCE/ONE
+> (se compiló de fuentes públicas generales) — ver "Pendiente real" en
+> ARQUITECTURA_BACKEND.md.
+>
 > Reemplaza la sección 3 (preguntas abiertas) de la primera versión de
 > este documento por las decisiones ya tomadas contigo, y agrega el
-> diseño técnico concreto para pasar de análisis a construcción. Sigue
-> siendo un documento de análisis — nada de esto está construido
-> todavía.
+> diseño técnico concreto para pasar de análisis a construcción.
 
 ## Decisiones cerradas
 

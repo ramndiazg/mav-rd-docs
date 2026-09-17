@@ -12,6 +12,56 @@
 > viviendo en los tres documentos de arquitectura, no aquí. Nada de código
 > cambió en esta limpieza, solo documentación.
 
+## 16/09/2026 (quinta sesión) — Cobertura de práctica de manejo + 3 bugs de zona horaria corregidos
+
+Construcción de punta a punta (backend + frontend) de "Cobertura de
+práctica de manejo", siguiendo el análisis cerrado en
+`ANALISIS_COBERTURA_PRACTICA.md` (ver banner al principio de ese
+documento — ya implementado, el detalle completo vive ahora en
+`ARQUITECTURA_BACKEND.md`, `ARQUITECTURA_FRONTEND.md` y `DATABASE.md`
+sección 24). Resumen:
+
+- **Construido:** colección `MunicipioPractica` (whitelist de
+  cobertura), `src/data/municipiosRD.js` (32 provincias/~160
+  municipios), `User.municipio`, `ProgresoEstudiante.tipoPlan`, plan
+  `estandar`/`teorico`, validación real de cobertura en
+  `inscripcionController.js`, panel `admin/cobertura-practica`, y los
+  `<select>` en cascada de provincia→municipio en `/registro` e
+  `/inscripcion`. Los dos scripts de siembra (`sembrarCoberturaPractica.js`,
+  `sembrarPlanEstandarTeorico.js`) ya corrieron en producción con los 8
+  municipios iniciales.
+- **Bug de despliegue (no de código):** el primer push a GitHub dejó
+  `app.js` sin las dos líneas que montan las rutas nuevas — todos los
+  demás archivos sí llegaron, ese cambio puntual no. Render desplegó sin
+  error (el código seguía siendo válido) pero las rutas nuevas daban
+  404. Diagnosticado comparando el `app.js` real en GitHub contra lo
+  esperado.
+- **Bug corregido en el camino: `react-hooks/set-state-in-effect` en
+  `/inscripcion`.** Tres `setState` síncronos dentro de efectos
+  (`cargandoPlanes`, `cobertura`, `tipoPlan`) causaban renders en
+  cascada reales, no solo ruido del linter. Reescrito como estado
+  derivado — ver ARQUITECTURA_FRONTEND.md.
+- **Bug corregido: el resumen diario por correo llegaba prácticamente
+  siempre en cero.** `utils/resumenDiario.js` calculaba "hoy" en UTC del
+  servidor en vez de hora RD (UTC-4) — el cron corre a las 9PM RD, que
+  en UTC ya es la madrugada del día siguiente, así que la ventana que se
+  consultaba en Mongo estaba mayormente en el futuro. Corregido con un
+  offset fijo de 4 horas.
+- **Mismo bug encontrado en dos lugares más, corregido de paso:**
+  `utils/geminiHerramientas.js` (rangos de fecha/mes del Asistente,
+  corridos 4 horas en cada borde) y, más serio,
+  `controllers/chatbotController.js` — el Asistente nunca supo qué día
+  es hoy (`INSTRUCCION_SISTEMA` no mencionaba la fecha actual), así que
+  cualquier pregunta con fecha relativa ("hoy", "este mes") dependía de
+  que Gemini adivinara la fecha por su cuenta. Corregido inyectando la
+  fecha real (hora RD) en cada pregunta.
+- **Documentos de contexto actualizados** (esta misma tarea):
+  `ARQUITECTURA_BACKEND.md`, `ARQUITECTURA_FRONTEND.md` y `DATABASE.md`
+  con el detalle completo de todo lo de arriba; de paso se restauró un
+  encabezado que faltaba en la lista de pendientes de
+  `ARQUITECTURA_FRONTEND.md` (defecto de una sesión anterior, no de
+  esta).
+
 ## 13/09/2026 (cuarta sesión) — Home de Motorizados/Pesados, fix de login, limpieza de documentos
 
 - **Sembrado en producción:** 4 `Sesion` + plan "teorico" de Motorizados
@@ -190,6 +240,10 @@ pendientes reales conocidos:
   esperaron las 24h reales ni se disparó a mano). Revisar si quedó una
   cuenta de estudiante huérfana de una prueba anterior (probablemente ya
   limpiada por la purga del 13/09/2026).
+- **NUEVO (16/09/2026):** verificar `src/data/municipiosRD.js` (32
+  provincias/~160 municipios, ver ARQUITECTURA_BACKEND.md) contra una
+  fuente oficial de la JCE/ONE — se compiló de fuentes públicas
+  generales, sin verificación línea por línea.
 - Construir un formulario en el panel para renombrar sesiones (hoy solo
   vía `PATCH /sesiones/:numero` a mano).
 - Decidir si vale la pena `POST /sesiones` (crear sesión desde el panel)

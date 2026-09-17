@@ -193,6 +193,110 @@ despectivo).
   decir "Motorizados"/"Pesados" explícito, o alcanza el diseño genérico
   de hoy?) tampoco está resuelto.
 
+### Cobertura de práctica de manejo — construido (13-16/09/2026)
+
+Dentro de `programa: "estandar"`, ahora conviven planes con práctica de
+manejo (fundacion/normal/vip, de siempre) y un cuarto plan sin ella
+(`codigo: "teorico"`, mismo código que ya usaban Motorizados/Pesados,
+pero como combinación `programa`+`codigo` distinta). Cuál puede elegir
+cada estudiante depende de si su municipio tiene cobertura de práctica
+presencial — la fundadora solo llega hoy a un puñado de municipios, no
+a los ~160 del país.
+
+- **`src/data/municipiosRD.js`** (NUEVO) — las 32 provincias / ~160
+  municipios de RD, fuente única para los `<select>` en cascada de
+  `/registro`, `/inscripcion` y `admin/cobertura-practica`. Servido por
+  `GET /api/ubicaciones/provincias-municipios` (público,
+  `routes/ubicacionesRoutes.js` + `controllers/ubicacionesController.js`).
+  **Pendiente real:** se compiló de fuentes públicas generales
+  (Wikipedia/ONE/statoids), no de un archivo oficial de la JCE/ONE
+  verificado línea por línea — vale un repaso antes de confiar
+  ciegamente en él, ver DATABASE.md sección 24.
+- **`models/MunicipioPractica.js`** (NUEVO) — whitelist de cobertura
+  (`provincia`, `municipio`, `activo`), índice único compuesto. Ver
+  DATABASE.md sección 24 para el esquema completo y los 8 municipios
+  sembrados.
+- **`controllers/municipioPracticaController.js` +
+  `routes/municipioPracticaRoutes.js`** (NUEVOS) —
+  `GET /api/municipios-practica` (admin, lista completa),
+  `POST /api/municipios-practica` (admin, agrega),
+  `PATCH /api/municipios-practica/:id` (admin, activa/desactiva),
+  `GET /api/municipios-practica/cobertura?provincia=&municipio=`
+  (**pública** — la usa `/inscripcion` para decidir qué mostrar antes de
+  que la estudiante inicie sesión con algo que requiera admin).
+- **`models/User.js`** — campo nuevo `municipio` (`default: null`, sin
+  migración para cuentas viejas — se tratan igual que "sin cobertura").
+  `authController.js#registro` lo exige junto con `provincia`.
+- **`models/ProgresoEstudiante.js`** — campo nuevo `tipoPlan`, espejo de
+  `Inscripcion.tipoPlan` copiado una sola vez al confirmar el pago
+  (mismo mecanismo que ya existía para `programa`).
+- **`utils/elegibilidadPractica.js`** — tercer parámetro opcional
+  `tipoPlan`: `requierePracticaDeManejo(usuario, programa, tipoPlan)`.
+  Un plan `"teorico"` no requiere práctica, sin importar el programa. Se
+  actualizaron los 4 call sites (`diplomaController.js` ×2,
+  `practicaController.js`, `intentoExamenController.js`) para pasar el
+  tercer argumento — el parámetro se dejó opcional para no romper
+  ningún llamado que quedara sin actualizar.
+- **`inscripcionController.js`** — `TIPOS_PLAN_POR_PROGRAMA.estandar`
+  ahora incluye `"teorico"`. En `crearOReenviarInscripcionPropia`
+  (autoinscripción), si `programa === "estandar"` se valida la
+  cobertura real contra `MunicipioPractica` antes de aceptar un plan
+  con práctica — el frontend ya filtra la lista para que la estudiante
+  ni vea la opción, pero la validación real vive en el backend, no
+  confía en que el frontend la haya filtrado bien.
+- **`scripts/sembrarCoberturaPractica.js`** y
+  **`scripts/sembrarPlanEstandarTeorico.js`** (NUEVOS) — ya corridos en
+  producción (16/09/2026).
+- **Lección operativa de esta sesión, vale la pena anotarla:** el
+  primer intento de desplegar dejó `app.js` sin las dos líneas que
+  montan `ubicacionesRoutes`/`municipioPracticaRoutes` — todos los demás
+  archivos nuevos sí llegaron a GitHub, pero ese cambio puntual a
+  `app.js` no, y Render desplegó igual (sin error, porque el código
+  seguía siendo válido) devolviendo 404 en las rutas nuevas. Se
+  diagnosticó comparando el `app.js` real en GitHub (`raw.githubusercontent.com`)
+  contra lo que debía tener, no asumiendo que "ya se subió todo" porque
+  el resto de los archivos sí estaban.
+
+### Cobertura de práctica de manejo — dos bugs de zona horaria encontrados y corregidos en el camino (16/09/2026)
+
+Al revisar por qué el correo del resumen diario llegaba siempre en cero,
+apareció un patrón de bug que se repetía en más de un archivo: código
+que calcula "hoy" (o "este mes") usando los componentes UTC del reloj
+del servidor, sin corregir por el offset de República Dominicana
+(UTC-4, fijo todo el año, sin horario de verano). Los tres casos
+encontrados y corregidos, sin relación con Cobertura de práctica salvo
+por haber salido a la luz en la misma sesión:
+
+1. **`utils/resumenDiario.js` — el resumen diario llegaba prácticamente
+   siempre en cero.** El cron corre a las 9:00 PM hora RD, que en UTC ya
+   es la madrugada del día siguiente (01:00 UTC). `inicioYFinDeHoy()`
+   calculaba el rango del día usando el día calendario **en UTC** —
+   en ese momento, "hoy" en UTC apenas llevaba 1 de sus 24 horas; el
+   otro 96% de la ventana que se consultaba en Mongo todavía no había
+   pasado. Corregido: se corre el reloj 4 horas atrás antes de sacar el
+   día calendario, y se deshace el corrimiento al construir el rango
+   final — verificado con el momento exacto en que dispara el cron: con
+   el fix, ya pasaron 21 de las 24 horas de la ventana (antes, 1 de 24).
+2. **`utils/geminiHerramientas.js` — mismo bug, menor impacto.**
+   `rangoDelDia()` (usada por `contarInscripciones`,
+   `solicitudesEmpresariales`, `resultadosExamenes`) y `balanceMes()`
+   construían los rangos en medianoche/mes UTC en vez de hora RD — un
+   corrimiento de 4 horas en cada borde (día o mes), no un cero total
+   como el caso anterior. Corregido con el mismo offset fijo.
+3. **`controllers/chatbotController.js` — el Asistente nunca supo qué
+   día es hoy, hallazgo aparte, más serio.** `INSTRUCCION_SISTEMA` era
+   un string fijo que jamás mencionaba la fecha actual — cuando María
+   pregunta algo con fecha relativa ("hoy", "este mes", "ayer"), Gemini
+   tenía que inventarse `fechaInicio`/`fechaFin` a partir de su propia
+   idea de "ahora", que para un modelo de lenguaje no es el reloj real.
+   Podía estar respondiendo con total seguridad sobre un rango de fecha
+   completamente distinto al que María quería decir, sin ninguna señal
+   de que algo estaba mal — más grave que el corrimiento de 4 horas de
+   los otros dos casos, porque el margen de error no tiene techo.
+   Corregido: `INSTRUCCION_SISTEMA` pasó a construirse en cada pregunta
+   (`construirInstruccionSistema()`), inyectando la fecha real del
+   servidor corregida a hora RD como una regla explícita más.
+
 ## Autenticación y roles
 
 - JWT propio (sin cookies) — cada request protegido manda
@@ -245,6 +349,10 @@ real" más abajo).
 
 El resto del controller (`listarUsuarios`, `crearCoordinadora`,
 `cambiarEstado`, `cambiarRol`) sin cambios de comportamiento.
+
+**NUEVO (13/09/2026):** `authController.js#registro` ahora exige
+`municipio` junto con `provincia` — ver "Cobertura de práctica de
+manejo" más abajo y DATABASE.md sección 1.
 
 ## Sesiones, contenido y exámenes
 
@@ -685,8 +793,10 @@ correctamente al contacto de la institución.
 
 ## Inscripciones y pagos
 
-Sin cambios en esta sesión (fuera del bug de "fundacion" corregido más
-abajo).
+**ACTUALIZADO (13-16/09/2026):** `crearOReenviarInscripcionPropia`
+ahora valida cobertura de práctica para `programa: "estandar"` — ver
+"Cobertura de práctica de manejo" más arriba. Fuera de eso, sin cambios
+en esta sesión (más allá del bug de "fundacion" corregido más abajo).
 
 ### Bug corregido (09/09/2026): plan "Fundación" rechazado al auto-inscribirse
 
@@ -772,6 +882,12 @@ qué consultar, y responde con cifras reales, nunca inventadas.
   Google Cloud **sin facturación activada** (activarla mata la capa
   gratuita para ese proyecto).
 
+**FIX (16/09/2026): el Asistente no sabía qué día es hoy, y las fechas
+de sus herramientas estaban corridas 4 horas.** Ver detalle completo en
+"Cobertura de práctica de manejo — dos bugs de zona horaria" más arriba
+— no tiene relación con el chatbot en sí, se encontró de rebote al
+investigar por qué el resumen diario llegaba en cero.
+
 ### Turbulencia real al integrar (documentada para no repetir la investigación si Google vuelve a cambiar algo)
 
 Google está iterando la API de Gemini muy rápido (3.6 → 3.7 → 3.8 Flash
@@ -819,6 +935,10 @@ vouchers/balance/empresas (Resend + Telegram Bot API,
   vouchers pendientes **acumulados** — no solo de hoy, nuevos
   registros, diplomas generados, solicitudes de Empresas, exámenes
   aprobados/reprobados) y arma el texto plano + HTML.
+
+**FIX (16/09/2026): llegaba prácticamente siempre en cero.** Ver
+"Cobertura de práctica de manejo — dos bugs de zona horaria" más arriba
+para el detalle completo del bug y la corrección.
 - **`POST /api/interno/resumen-diario`** (`routes/resumenRoutes.js` +
   `controllers/resumenController.js`) — **fuera de `protegerRuta` a
   propósito**: quien llama es un robot (GitHub Action), no una persona
@@ -891,6 +1011,12 @@ InformacionComplementariaEscolar")` activo (no un comentario, código
   plan en bloque — aunque para cambios puntuales ya es más simple usar
   la UI de admin (`admin/planes`, ver ARQUITECTURA_FRONTEND.md).
 
+- **`sembrarCoberturaPractica.js` y `sembrarPlanEstandarTeorico.js`
+  (NUEVOS, 13/09/2026, corridos en producción 16/09/2026)**: ver
+  "Cobertura de práctica de manejo" más arriba. Mismo patrón dry-run por
+  defecto / `--confirmar` para lo real que el resto de los scripts de
+  siembra del proyecto.
+
 ## Notas de diseño
 
 - Ningún borrado es físico donde importa la integridad histórica:
@@ -959,6 +1085,18 @@ InformacionComplementariaEscolar")` activo (no un comentario, código
   - Probar de punta a punta: inscripción → pago → cuestionario → 4
     sesiones → exámenes con selección aleatoria real → diploma sin
     pedir práctica.
+- **COBERTURA DE PRÁCTICA DE MANEJO — construida y desplegada
+  (13-16/09/2026).** Ver la sección propia más arriba para el detalle
+  completo. Sigue pendiente:
+  - **Verificar `src/data/municipiosRD.js`** contra una fuente oficial
+    de la JCE/ONE — se compiló de fuentes públicas generales, sin
+    verificación línea por línea (ver la sección de arriba y DATABASE.md
+    sección 24).
+  - Definir el precio real del plan `estandar`/`teorico` (sembrado en
+    RD$0 provisional) y actualizarlo desde `admin/planes`.
+  - Agregar más municipios a la cobertura desde
+    `admin/cobertura-practica` a medida que la fundadora los vaya
+    confirmando — hoy son solo los 8 iniciales.
 - Decidir si vale la pena construir `POST /sesiones` (crear sesión desde
   el panel) o si el script de terminal es suficiente a largo plazo.
 - Recordatorios por correo (examen disponible / voucher sin seguimiento):
