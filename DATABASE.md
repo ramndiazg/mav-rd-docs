@@ -8,6 +8,9 @@
 
 ---
 
+> Actualizado al 18/09/2026 — ver sección 25 (`Reporte`, nueva) y el
+> apunte de `configuracion` sobre `reportes_notificaciones_activas`.
+
 ## Segunda purga: usuarios de prueba, todos los roles (07/09/2026)
 
 Se corrió `scripts/purgarUsuariosPrueba.js` (nuevo, no confundir con
@@ -199,6 +202,13 @@ claves quedan huérfanos en Atlas; no se borraron, pero no se debe seguir
 escribiendo ahí para precios. El resto de `configuracion` (lo que no sea
 `precio_plan_*`) sigue funcionando igual, sin cambios.
 
+**NUEVA clave (17-18/09/2026):** `reportes_notificaciones_activas` —
+`valor` es un objeto plano `{ tecnico, contenido, pago, otro }`
+(booleanos), sin default sembrado (si el documento no existe, el
+código asume `true` para los 4). Administrada desde
+`admin/notificaciones-reportes`, la consulta `notificarNuevoReporte` —
+ver sección 25 y ARQUITECTURA_BACKEND.md.
+
 ## 4. sesiones — ya recreada tras la purga (13/08/2026), índice corregido (11/09/2026)
 
 ```js
@@ -225,9 +235,19 @@ sesiones de Motorizados/Pesados.
 provisionales, "Sesión 1"..."Sesión 4" — confirmado el 28/08/2026
 revisando la pantalla real del aula virtual) + 4 con `"motorizados"` y
 4 con `"pesados"` (sembrados el 13/09/2026, también con título
-provisional, sin contenido/exámenes reales todavía). Renombrarlos a
-los temas reales es una simple actualización de `titulo` vía
-`PATCH /sesiones/:numero`, no requiere cambio de esquema ni de
+provisional, sin contenido/exámenes reales todavía). **Corrección
+(17/09/2026):** la afirmación de arriba ("4 documentos con
+`programaContenido: 'estandar'`") no era cierta en la práctica hasta
+esta fecha — un default de esquema no reescribe documentos ya
+existentes en Mongo, así que las 4 `Sesion` originales de `estandar`
+(creadas antes del 11/09/2026) en realidad no tenían el campo escrito,
+lo que causaba "Sesión no encontrada" para cualquier estudiante de ese
+programa. Corregido con un backfill real
+(`scripts/corregirProgramaContenidoSesion.js`, corrido en producción
+el 17/09/2026) — ver ARQUITECTURA_BACKEND.md para el detalle completo
+del bug. Renombrarlos a los temas reales es una simple actualización
+de `titulo` vía `PATCH /sesiones/:numero`, no requiere cambio de
+esquema ni de
 código. **Aclaración importante:** esto es distinto de los títulos de
 `ContenidoSesion` (ver más abajo) — esos sí tienen nombres reales
 ("1.1 Bienvenida a Muvo RD Vial", etc.), pero son los títulos de cada
@@ -486,8 +506,8 @@ reales:
 `codigo: "teorico"`, sin los 4 campos de práctica (`required: false`
 en el esquema, no aplican a un programa sin práctica de manejo):
 
-| programa    | codigo  | nombre | precio  |
-| ----------- | ------- | ------ | ------- |
+| programa    | codigo  | nombre                | precio   |
+| ----------- | ------- | --------------------- | -------- |
 | motorizados | teorico | Teoría de Motorizados | RD$3,500 |
 | pesados     | teorico | Teoría de Pesados     | RD$4,500 |
 
@@ -501,9 +521,9 @@ práctica de manejo" en ARQUITECTURA_BACKEND.md) — con cobertura, sigue
 viendo los 3 planes de siempre (fundacion/normal/vip) más este, todos
 seleccionables.
 
-| programa | codigo  | nombre              | precio |
-| -------- | ------- | ------------------- | ------ |
-| estandar | teorico | Plan Solo Teórico    | RD$0 (provisional — ajustar desde `admin/planes`) |
+| programa | codigo  | nombre            | precio                                            |
+| -------- | ------- | ----------------- | ------------------------------------------------- |
+| estandar | teorico | Plan Solo Teórico | RD$0 (provisional — ajustar desde `admin/planes`) |
 
 VIP incluye además en `caracteristicas`: acompañamiento al INTRANT,
 preparación para su examen teórico, instrucciones para el examen del
@@ -623,15 +643,15 @@ Sembrada por `scripts/sembrarCoberturaPractica.js` con los 8 municipios
 iniciales confirmados por la fundadora:
 
 | provincia         | municipio           |
-| ------------------ | -------------------- |
-| Distrito Nacional  | Distrito Nacional    |
-| Santo Domingo      | Santo Domingo Este   |
-| Santo Domingo      | Santo Domingo Oeste  |
-| Santo Domingo      | Santo Domingo Norte  |
-| Santiago           | Santiago              |
-| San Cristobal      | San Cristobal         |
-| Santiago           | Navarrete             |
-| Monsenor Nouel     | Bonao                 |
+| ----------------- | ------------------- |
+| Distrito Nacional | Distrito Nacional   |
+| Santo Domingo     | Santo Domingo Este  |
+| Santo Domingo     | Santo Domingo Oeste |
+| Santo Domingo     | Santo Domingo Norte |
+| Santiago          | Santiago            |
+| San Cristobal     | San Cristobal       |
+| Santiago          | Navarrete           |
+| Monsenor Nouel    | Bonao               |
 
 Índice único compuesto `{ provincia: 1, municipio: 1 }` — evita agregar
 la misma cobertura dos veces por error desde el panel.
@@ -644,6 +664,42 @@ municipios de RD que alimenta los `<select>` en cascada de `/registro`,
 verificación** (ver "Pendiente (base de datos)" más abajo): se compiló
 de fuentes públicas generales, no de un archivo oficial de la JCE/ONE
 verificado línea por línea.
+
+## 25. Reporte — NUEVA (17-18/09/2026)
+
+```js
+{
+  _id: ObjectId,
+  estudianteId: ObjectId,  // ref User, required
+  tipo: String,             // enum: tecnico | contenido | pago | otro, required
+  tipoOtro: String,         // default null — solo se usa cuando tipo === "otro"
+  mensaje: String,          // required — mensaje inicial de la estudiante
+  estado: String,           // enum: abierto | en_revision | resuelto, default "abierto"
+  respuestas: [
+    {
+      autor: ObjectId,       // ref User, required
+      rolAutor: String,      // enum: estudiante | coordinadora | admin, required
+      mensaje: String,       // required
+      fecha: Date,           // createdAt del subdocumento (sin updatedAt)
+    },
+  ],
+  createdAt: Date, updatedAt: Date
+}
+```
+
+Sistema de reportes/soporte de estudiantes hacia coordinadora/admin —
+ver ARQUITECTURA_BACKEND.md para el detalle completo de endpoints y
+permisos. **Decisión cerrada:** sin reapertura — una vez `estado ===
+"resuelto"`, ni la estudiante ni el staff pueden agregar más
+`respuestas` ni cambiar el estado; si se necesita algo más, se crea un
+`Reporte` nuevo. Un `respuestas` de coordinadora/admin sobre un reporte
+`"abierto"` lo pasa automáticamente a `"en_revision"` — una respuesta
+de la propia estudiante no cambia el estado.
+
+La notificación a coordinadora/admin cuando llega un reporte nuevo
+reutiliza `DestinatarioNotificacion` (misma colección de siempre), no
+es una tabla propia — el único dato nuevo es el toggle por tipo en
+`configuracion` (ver sección 3).
 
 ## Índices recomendados — sin cambios excepto 2 nuevos
 
@@ -671,6 +727,11 @@ verificado línea por línea.
   se dropee a mano o se corra `syncIndexes()`.**
 - **municipiosPractica: único compuesto { provincia, municipio } (NUEVO,
   13/09/2026 — ver sección 24).**
+- **Reporte: { estudianteId, createdAt: -1 } (lista "mis reportes") y
+  { estado, createdAt: -1 } (panel de coordinadora/admin filtrando por
+  estado) (NUEVO, 17-18/09/2026 — ver sección 25). Ninguno de los dos
+  está confirmado como índice físico en Atlas todavía, son
+  recomendados igual que el resto de esta lista.**
 
 ## Notas de diseño
 
@@ -711,9 +772,14 @@ verificado línea por línea.
   nuevo `"grupo"`.
 - **CONSTRUIDO (13/09/2026): Motorizados y Pesados.**
   `Sesion.programaContenido` + índice compuesto (sección 4), 4 `Sesion`
-  + plan `"teorico"` de cada uno ya sembrados (sección 21). Falta
-  cargar contenido/exámenes reales en esas sesiones — ver
-  ARQUITECTURA_BACKEND.md, "Pendiente real".
+  - plan `"teorico"` de cada uno ya sembrados (sección 21). Falta
+    cargar contenido/exámenes reales en esas sesiones — ver
+    ARQUITECTURA_BACKEND.md, "Pendiente real".
+- **CONSTRUIDO (17-18/09/2026): Sistema de reportes/soporte de
+  estudiantes.** Colección `Reporte` nueva (sección 25), clave
+  `reportes_notificaciones_activas` en `configuracion` (sección 3).
+  Sin índices físicos confirmados en Atlas todavía — ver "Índices
+  recomendados" arriba.
 - **CONSTRUIDO (13-16/09/2026): Cobertura de práctica de manejo
   (`estandar`).** Colección `municipiosPractica` nueva (sección 24),
   `User.municipio`, `ProgresoEstudiante.tipoPlan`, plan

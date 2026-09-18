@@ -1,6 +1,6 @@
 # Arquitectura del Frontend — mav-rd-frontend
 
-> Refleja el estado REAL del código al 10/09/2026. Reemplaza la versión
+> Refleja el estado REAL del código al 18/09/2026. Reemplaza la versión
 > anterior de este mismo archivo. Para el historial de cómo se llegó aquí,
 > ver HISTORIAL_MODIFICACIONES.md.
 
@@ -57,7 +57,7 @@ el detalle del cambio.
 
 mav-rd-frontend/
 ├── app/
-│ ├── page.tsx # Inicio — Planes/precios (13/08) + banner Empresas (13/08) + promo libro de la fundadora, colores brand-yellow/brand-mamey nuevos (sesión sin documentar, confirmado 28/08/2026) + hero y tarjeta "Así empezamos" editables desde /admin/contenido-pagina (CORREGIDO 10/09/2026, ver sección de bugs abajo — antes no leía /api/contenido)
+│ ├── page.tsx # Inicio — Planes/precios (13/08, precio quitado de las tarjetas 17/09) + banner Empresas (13/08) + banner Escolar (17/09) + promo libro de la fundadora, colores brand-yellow/brand-mamey nuevos (sesión sin documentar, confirmado 28/08/2026) + hero y tarjeta "Así empezamos" editables desde /admin/contenido-pagina (CORREGIDO 10/09/2026, ver sección de bugs abajo — antes no leía /api/contenido) + sección "Manejo preventivo, manejo defensivo" y testimonios reordenados (17/09, ver sección nueva abajo)
 │ ├── sitemap.ts # NUEVO (documentado 28/08/2026, existía desde antes sin registrar) — SITE_URL corregido al dominio propio
 │ ├── robots.ts # NUEVO (documentado 28/08/2026, existía desde antes sin registrar) — SITE_URL corregido, ya no bloquea /inscripcion por error
 │ ├── empresas/page.tsx # NUEVO (13/08/2026) — programa empresarial, informativo + formulario. Campo honeypot "sitioWeb" (sin Turnstile, ver sección de seguridad abajo)
@@ -76,6 +76,7 @@ mav-rd-frontend/
 │ ├── dashboard/page.tsx # SESIONES = [1,2,3,4] + gate del test psicológico + pantalla de "lista para práctica"/instructor aprobado tras completar teoría (05/09/2026)
 │ ├── inscripcion/page.tsx # lee precios de /api/configuracion
 │ ├── test-psicologico/page.tsx # NUEVO (05/09/2026) — consentimiento + cuestionario de 54+5 preguntas, una sola vez
+│ ├── soporte/page.tsx # NUEVO (17-18/09/2026) — estudiante reporta incidencia (tecnico/contenido/pago/otro) y ve el hilo de respuestas de coordinadora/admin
 │ ├── aula-virtual/[sesion]/page.tsx # PDF con enlace firmado (13/08) + UI de contenido (pdf/enlace/video/texto) unificada y botón "Marcar como visto" centrado para los 4 tipos (28/08/2026)
 │ ├── examen/[intentoId]/page.tsx
 │ ├── (estudiante)/
@@ -83,13 +84,14 @@ mav-rd-frontend/
 │ ├── perfil/cambiar-password/page.tsx
 │ ├── (coordinadora)/
 │ │ ├── panel/layout.tsx
-│ │ ├── panel/page.tsx # MODULOS_ADMIN: 2 tarjetas nuevas, Choferes y Notif. de práctica (05/09/2026)
+│ │ ├── panel/page.tsx # MODULOS_ADMIN: 2 tarjetas nuevas, Choferes y Notif. de práctica (05/09/2026); MODULOS_CURSO gana tarjeta "Soporte" con badge de reportes abiertos, MODULOS_ADMIN gana "Notif. de reportes" (17-18/09/2026)
 │ │ ├── panel/pagos/page.tsx
 │ │ ├── panel/estudiantes/page.tsx
 │ │ ├── panel/aula-virtual/page.tsx # subida de PDF real como archivo (13/08/2026, ver detalle abajo)
 │ │ ├── panel/examenes/page.tsx
 │ │ ├── panel/diplomas/page.tsx
 │ │ ├── panel/test-psicologico/page.tsx # NUEVO (05/09/2026) — lista + detalle de respuestas, sin puntaje calculado
+│ │ ├── panel/soporte/page.tsx # NUEVO (17-18/09/2026) — coordinadora/admin ven y responden reportes de estudiantes, lista+detalle igual que test-psicologico, filtro por estado
 │ │ ├── panel/noticias/page.tsx
 │ │ ├── panel/testimonios/page.tsx
 │ │ └── panel/faq/page.tsx
@@ -101,7 +103,8 @@ mav-rd-frontend/
 │ │ ├── admin/notificaciones/page.tsx
 │ │ ├── admin/choferes/page.tsx # NUEVO (05/09/2026) — CRUD de instructores de práctica
 │ │ ├── admin/notificaciones-practica/page.tsx # NUEVO (05/09/2026) — destinatarios aparte, solo avisos de práctica
-│ │ └── admin/asistente/page.tsx # chatbot con Gemini, solo admin (04/09/2026)
+│ │ ├── admin/asistente/page.tsx # chatbot con Gemini, solo admin (04/09/2026)
+│ │ └── admin/notificaciones-reportes/page.tsx # NUEVO (17-18/09/2026) — toggle por tipo de reporte (tecnico/contenido/pago/otro), independiente de los destinatarios de admin/notificaciones
 │ ├── (conductor)/
 │ │ └── practica/layout.tsx, page.tsx # NUEVO (05/09/2026) — dashboard del chofer: aprobar estudiantes listas para práctica
 │ ├── layout.tsx # Metadata SEO completa (title/description/OG/Twitter/JSON-LD Schema.org) — existía desde una sesión sin documentar (comentario interno fecha 13/08/2026), SITE_URL corregido al dominio propio el 28/08/2026
@@ -110,7 +113,7 @@ mav-rd-frontend/
 │ └── bancoPreguntasTest.ts # NUEVO (05/09/2026) — 54 preguntas de escala + 5 de reflexión, compartidas entre el formulario del estudiante y la vista de la coordinadora
 ├── components/
 │ ├── ui/Paginacion.tsx
-│ ├── layout/Navbar.tsx, Footer.tsx # Navbar: link a "Empresas" agregado (13/08/2026)
+│ ├── layout/Navbar.tsx, Footer.tsx # Navbar: link a "Empresas" agregado (13/08/2026); link "Soporte" en el dropdown de usuario (desktop y móvil), solo si rol === "estudiante" (17-18/09/2026). Footer: Muvo RD Vial y Fundación Mujeres al Volante RD separados en dos bloques propios, crédito del desarrollador (17/09/2026, ver sección nueva abajo)
 │ ├── noticias/NoticiaAcciones.tsx, CompartirBotones.tsx
 │ ├── auth/RutaProtegida.tsx # tipo Rol ahora incluye "conductor" (05/09/2026)
 │ ├── dashboard/ProgresoCarretera.tsx # la parada "Práctica" ahora refleja practicaAprobada (05/09/2026)
@@ -126,7 +129,6 @@ mav-rd-frontend/
 │ ├── practica-vip.jpg
 │ └── practica-normal-ilustracion.jpg
 ├── app/favicon.ico
-├── tailwind.config.ts
 ├── .env.local.example
 └── package.json
 
@@ -158,9 +160,16 @@ riesgo, no bloqueante): el código usa dos convenciones distintas para
 las mismas variantes claras de marca según el archivo — `bg-brand-blue-light`/
 `bg-brand-pink-light` (con guión) en `app/page.tsx`, vs.
 `text-brand-blueLight`/`bg-brand-pinkLight` (camelCase) en las páginas
-del panel de coordinadora y aula virtual. Ambas funcionan hoy en
-producción (Tailwind v4 debe estar generando ambos alias), pero es
-inconsistente. Unificar en algún momento, sin urgencia.
+del panel de coordinadora y aula virtual. **Corrección (17-18/09/2026):**
+revisando el repo real (no solo `globals.css`), **no existe
+`tailwind.config.ts`** en `mav-rd-frontend` — Tailwind v4 config-less,
+solo `@theme` en `globals.css` con variables en formato con guión
+(`--color-brand-blue-light`). La variante camelCase probablemente
+**no genera ninguna clase real** (se ignora en silencio, no revienta
+nada, solo no pinta el color) — no es "ambas funcionan", como decía
+esta nota antes. Los archivos nuevos de Soporte usan la variante con
+guión a propósito. Sigue pendiente auditar y corregir los archivos
+existentes que usan camelCase.
 
 ## Autenticación — 4to rol agregado (05/09/2026)
 
@@ -352,12 +361,16 @@ Reemplaza la versión del 13/08/2026 (2 tarjetas, precio leído de
   dinámicamente con `.map()` sobre la respuesta — agregar o quitar un
   plan, o cambiar su nombre/precio/frase, no requiere tocar este
   archivo, solo editar el dato en `/admin/planes`.
-- El Home ahora es **solo resumen**: nombre, precio y una frase
-  destacada corta por plan (`Plan.fraseDestacada`), con un botón "Ver
-  detalles del plan" hacia `/inscripcion` (antes el CTA iba directo a
-  `/registro` y el Home mostraba la lista completa de características —
-  esa lista ahora vive solo en `/inscripcion`, decisión explícita del
-  usuario para no duplicar el detalle en dos páginas).
+- El Home ahora es **solo resumen**: nombre y una frase destacada corta
+  por plan (`Plan.fraseDestacada`), con un botón "Ver detalles del
+  plan" hacia `/inscripcion?programa=...&plan=...` (antes el CTA iba
+  directo a `/registro` y el Home mostraba la lista completa de
+  características — esa lista ahora vive solo en `/inscripcion`,
+  decisión explícita del usuario para no duplicar el detalle en dos
+  páginas). **CORREGIDO (17/09/2026): el precio ya no se muestra en
+  las tarjetas del Home** — decisión de la fundadora, no quería que el
+  precio fuera lo primero que ve alguien en la experiencia. El precio
+  real sigue viéndose en `/inscripcion`, al elegir el plan.
 - VIP se marca visualmente como destacado (`plan.codigo === "vip"`) en
   vez de un campo `destacado` hardcodeado como antes.
 
@@ -391,7 +404,13 @@ nueva.
 
 **Nota histórica preservada:** el banner hacia `/empresas` entre
 Testimonios y el CTA final del Home (agregado 13/08/2026) sigue igual,
-sin cambios en este rediseño.
+sin cambios en este rediseño. **NUEVO (17/09/2026):** banner gemelo
+hacia `/escolar` ("¿Eres parte de un colegio?"), mismo patrón visual,
+agregado justo antes del banner empresarial — antes solo existía el de
+Empresas, Escolar no tenía punto de entrada visible desde la portada.
+Fondo `bg-brand-mamey` (el de Empresas es `bg-brand-blue`); se probó
+primero con `bg-brand-pink`, pero se cambió por pedido explícito de la
+fundadora ("el rojo está muy llamativo").
 
 ## BUG CORREGIDO (10/09/2026): el Home no leía el contenido guardado desde `/admin/contenido-pagina`
 
@@ -671,6 +690,84 @@ Diagnosticado comparando directamente el `app.js` real en GitHub contra
 lo esperado, en vez de asumir que "si el resto del código llegó, este
 archivo también".
 
+## BUG CORREGIDO (17/09/2026): pantalla parpadeando después de hacer login
+
+Reportado en pruebas: 3 de cada 10-15 logins de estudiante dejaban la
+pantalla parpadeando entre dos estados (navbar y footer quietos, el
+resto va y viene), sin detenerse hasta forzar un cambio de pestaña.
+
+**Causa:** condición de carrera en `contexts/AuthContext.tsx`. Al
+montar la app, un `useEffect` llama a `verificarSesion()` (confirma el
+token guardado contra el backend) de forma asíncrona. Si alguien hacía
+login con una cuenta, cerraba sesión y entraba con otra **mientras esa
+verificación vieja seguía en el aire** (el escenario típico al probar
+varias estudiantes seguidas en la misma pestaña), la respuesta vieja
+podía llegar después del nuevo login y pisar el `usuario` del contexto
+con los datos de la cuenta anterior — lo que a su vez disparaba
+`RutaProtegida` a redirigir, que disparaba el login de nuevo, en un
+ciclo.
+
+**Corregido:** antes de aplicar el resultado de `verificarSesion()`, se
+compara el token guardado en `localStorage` en ese momento contra el
+que se usó para hacer la petición; si no coinciden (alguien ya hizo
+login/logout mientras tanto), se descarta la respuesta obsoleta sin
+tocar el contexto. Probado en producción el 17/09/2026 haciendo login
+seguido con varias cuentas distintas.
+
+## NUEVO: Home — "Manejo preventivo, manejo defensivo" + testimonios reordenados + footer con Muvo y la Fundación separados (17/09/2026)
+
+La fundadora compartió un volante propio (diseño que le gustó, con
+información real de la marca) como inspiración para mejorar el Home de
+cara al lanzamiento. Se tomó como fuente de copy/estructura real, no
+solo estética — varias frases del volante son texto literal de la
+fundadora, llevadas al sitio tal cual:
+
+- **Tagline en el Hero:** "Conduce con inteligencia, protege vidas",
+  arriba del `heroTitulo` editable (que sigue viniendo de
+  `/admin/contenido-pagina`, sin tocar). Es texto fijo en código, a
+  propósito — es identidad de marca, no copy de campaña.
+- **Sección nueva "Manejo preventivo, manejo defensivo"**, justo
+  después del Hero — los 5 pilares del volante (Observa / Anticipa /
+  Mantén distancia / Controla la velocidad / Prepárate) como íconos
+  `lucide-react` (`Eye`, `Brain`, `ShieldCheck`, `Gauge`,
+  `AlertTriangle`) en círculos alternados amarillo/blanco, sobre fondo
+  `bg-brand-blue` con borde `border-brand-yellow` — único bloque de
+  color sólido de toda la página, a propósito, para que se note como
+  el diferenciador antes de que la persona llegue a comparar planes.
+- **Testimonios movidos** de casi el final de la página a justo
+  después de esa sección (antes de "¿Qué licencia necesitas?") —
+  razón de mercadeo: prueba social antes de pedirle a alguien que
+  compare planes, no después. Sigue habiendo un link a `/testimonios`
+  para la lista completa.
+- **Sección "Impacto"** (5 íconos: Conducción responsable / Familias
+  más seguras / Menos accidentes / Comunidades más seguras / Un mejor
+  país, también del volante) + banner corto con la frase "Somos
+  embajadores de la educación vial familiar" — antes del CTA final.
+- **CTA final corregido:** el párrafo bajo "¿Todo listo para
+  empezar?" estaba vacío en el código (`<p>...</p>` sin texto, defecto
+  de una sesión anterior sin documentar). Ahora tiene texto real, y se
+  cierra con la frase manuscrita del volante ("Hoy conduces mejor,
+  mañana hay más historias.") en una tipografía de acento nueva.
+- **Tipografía nueva, uso puntual:** `Caveat` (Google Font, next/font),
+  cargada en `app/layout.tsx` como `--font-caveat` y mapeada a
+  `--font-script` en `globals.css` (mismo patrón que `--font-display`/
+  `--font-body`). Se usa en una sola frase de todo el sitio (el cierre
+  del CTA final) — nunca como tipografía de cuerpo ni de títulos.
+
+**`components/layout/Footer.tsx` — reescrito.** Antes mezclaba a Muvo
+RD Vial y a la Fundación Mujeres al Volante RD en un solo párrafo, con
+la fundación como si fuera la dueña de todo el sitio — riesgo real: la
+fundación (sin fines de lucro) solo subsidia el plan "Mujeres al
+Volante" específicamente, no toda la operación de Muvo. Ahora son dos
+bloques separados en el footer (pasó de 3 a 4 columnas:
+`sm:grid-cols-2 lg:grid-cols-4`): Muvo RD Vial con su descripción
+completa, y la Fundación descrita como "subsidiaria del plan Mujeres
+al Volante — nuestro aporte a la comunidad", sin implicar que es dueña
+del resto. El copyright del pie también pasó de "Mujeres al Volante
+RD" a "Muvo RD Vial". Se agregó una línea de crédito del desarrollador
+("Desarrollado por Ramón Díaz", `mailto:ramndiaz@gmail.com`) debajo
+del copyright.
+
 ## NUEVO: Panel de coordinadora/admin — Cuestionario Escolar (11/09/2026)
 
 **Corrige un bug real, no solo agrega una pantalla.** El backend
@@ -699,7 +796,61 @@ construyó.
   → `/cuestionario-escolar`, alineado con el rename de backend — ver
   ARQUITECTURA_BACKEND.md. `dashboard/page.tsx` actualizado (redirect y
   nombre de endpoint).
+
+## NUEVO: Sistema de reportes/soporte de estudiantes (17-18/09/2026)
+
+Ver ARQUITECTURA_BACKEND.md para el detalle de endpoints/permisos y
+DATABASE.md sección 25 para el schema de `Reporte`. Se evaluó la idea
+original de un "chat de soporte" en tiempo real y se descartó a favor
+de un sistema de tickets asíncrono, consistente con el resto de la app
+(ningún otro módulo usa websockets/polling).
+
+- **`app/soporte/page.tsx`** (NUEVO) — vista de la estudiante,
+  enlazada desde el dropdown del Navbar (no desde el dashboard). Dos
+  vistas dentro de la misma página: lista de "Mis reportes" (con
+  hilo de respuestas expandible por fila, mismo patrón visual que los
+  paneles de coordinadora) y formulario de "Nuevo reporte" (`<select>`
+  de tipo, campo de texto libre solo si el tipo es "Otro", textarea de
+  mensaje). Si el reporte está `resuelto`, no se muestra caja de
+  respuesta — solo el aviso de que hay que crear uno nuevo.
+- **`app/(coordinadora)/panel/soporte/page.tsx`** (NUEVO) — mismo
+  patrón lista+detalle que `panel/test-psicologico/page.tsx` y
+  `panel/cuestionario-escolar/page.tsx`. Filtro por estado (Todos/
+  Abiertos/En revisión/Resueltos), caja de respuesta, y botones para
+  cambiar de estado (a "en revisión" solo si estaba "abierto"; a
+  "resuelto" siempre disponible mientras no lo esté ya). Accesible
+  para coordinadora y admin por igual.
+- **`app/(admin)/admin/notificaciones-reportes/page.tsx`** (NUEVO,
+  solo admin) — 4 toggles (uno por tipo de reporte) para activar/
+  desactivar el aviso inmediato por correo/Telegram. Independiente de
+  `admin/notificaciones` (esa pantalla configura los destinatarios;
+  esta configura qué tipos de reporte los disparan).
+- **`components/layout/Navbar.tsx`** — link "Soporte" en el dropdown
+  de usuario (desktop y móvil), condicionado a `usuario.rol ===
+"estudiante"` — coordinadora/admin ya tienen su propia tarjeta en
+  `/panel`.
+- **`app/(coordinadora)/panel/page.tsx`** — tarjeta "Soporte" (ícono
+  `LifeBuoy`) en `MODULOS_CURSO`, con el mismo patrón de badge que ya
+  usaba "Pagos" (cuenta de `GET /api/reportes?estado=abierto`).
+  Tarjeta admin-only "Notif. de reportes" (mismo ícono) en
+  `MODULOS_ADMIN`.
+- **Bug de lint corregido en el camino, mismo patrón ya conocido:**
+  las 4 páginas nuevas con `fetch` en `useEffect` (las 3 de arriba más
+  las dos cargas nuevas de `panel/page.tsx`) disparaban
+  `react-hooks/set-state-in-effect` — mismo bug ya documentado y
+  corregido antes en `panel/estudiantes/page.tsx` y
+  `panel/grupos/*.tsx` (ver "Pendiente real" de la sesión del
+  16/09/2026 en HISTORIAL_MODIFICACIONES.md). Fix idéntico: envolver
+  la llamada en `queueMicrotask(...)`, tanto para la variante de
+  función nombrada (`queueMicrotask(() => cargar())`) como para la
+  variante IIFE (`queueMicrotask(async () => { ... })` en vez de
+  `(async () => { ... })()`). De paso se corrigió el mismo patrón, sin
+  reporte previo, en el efecto ya existente de `pendientesPago` en
+  `panel/page.tsx` — tenía el mismo defecto desde antes de esta
+  sesión, solo que nadie lo había hecho saltar todavía.
+
 ## Pendiente real (frontend) — bugs corregidos y notas de esta sesión, ver
+
 ARQUITECTURA_BACKEND.md para el detalle técnico de cada uno:
 
 1. El warning de React `react-hooks/set-state-in-effect` en las dos

@@ -1,6 +1,6 @@
 # Arquitectura del Backend — mav-rd-backend
 
-> Refleja el estado REAL del código al 10/09/2026. Reemplaza la versión
+> Refleja el estado REAL del código al 18/09/2026. Reemplaza la versión
 > anterior de este mismo archivo. Para el historial de cómo se llegó aquí,
 > ver HISTORIAL_MODIFICACIONES.md.
 
@@ -132,7 +132,7 @@ completo y la tabla de precios/sesiones/costos actual).
 - `Inscripcion.tipoPlan` pasó de `["normal","vip"]` a
   `["fundacion","normal","vip"]`.
 - **Campo `programa`** en `Plan` e `Inscripcion` (`String, default:
-  "estandar"`, sin enum cerrado): se agregó en esta misma sesión, antes
+"estandar"`, sin enum cerrado): se agregó en esta misma sesión, antes
   de que existiera ningún documento real de `Plan`, específicamente para
   no tener que migrar después. `programa` (currículo) queda separado de
   `tipoPlan` (nivel de práctica/precio dentro de ese currículo).
@@ -256,6 +256,32 @@ a los ~160 del país.
   diagnosticó comparando el `app.js` real en GitHub (`raw.githubusercontent.com`)
   contra lo que debía tener, no asumiendo que "ya se subió todo" porque
   el resto de los archivos sí estaban.
+
+### Bug corregido (17/09/2026): "Sesión no encontrada" para estudiantes de estandar
+
+Reportado tras la sesión de pruebas: le pasaba a una estudiante de grupo
+colegio y a una de plan standard al intentar entrar a la Sesión 1 —
+ambas consumen `Sesion` con `programaContenido: "estandar"`.
+
+**Causa:** `programaContenido` se agregó al esquema el 11/09/2026 con
+`default: "estandar"` (ver DATABASE.md sección 4), pero un default de
+Mongoose **no reescribe documentos que ya existían en Mongo antes de
+que el campo se agregara al esquema** — solo aplica al crear un
+documento nuevo, o al hidratarlo en memoria para lectura, nunca al
+filtro real que MongoDB usa para buscar. Las 4 `Sesion` originales de
+`estandar` (de antes del 11/09) nunca tuvieron el campo escrito de
+verdad en el documento, así que `Sesion.findOne({ numero: 1,
+programaContenido: "estandar" })` no las encontraba — 404 para
+cualquier estudiante de `estandar`, sin importar si viene de colegio,
+standard o cualquier otro plan de ese programa. Motorizados/Pesados no
+tenían este problema porque sus `Sesion` se crearon después del 11/09,
+ya con el campo.
+
+**Corregido:** `scripts/corregirProgramaContenidoSesion.js` (ya
+existía, en modo dry-run por defecto) — hace un backfill de
+`programaContenido: "estandar"` en los documentos donde el campo no
+existe. Corrido en producción el 17/09/2026 (`--confirmar`) y
+verificado con un login real de estudiante standard y de colegio.
 
 ### Cobertura de práctica de manejo — dos bugs de zona horaria encontrados y corregidos en el camino (16/09/2026)
 
@@ -831,7 +857,64 @@ ninguna colección ni configuración nueva — llega al mismo correo
 institucional que ya recibe los demás avisos internos. **NUEVO
 (05/09/2026):** se agregó `notificarEstudianteListaParaPractica`, que
 usa un mecanismo aparte (`DestinatarioPractica` + `Instructor`) — ver
-sección "Seguimiento de práctica de manejo" arriba.
+sección "Seguimiento de práctica de manejo" arriba. **NUEVO
+(17-18/09/2026):** se agregó `notificarNuevoReporte`, que sí reutiliza
+`DestinatarioNotificacion` (mismo mecanismo de siempre) pero con un
+toggle por tipo — ver sección propia más abajo.
+
+## NUEVO: Sistema de reportes/soporte de estudiantes (17-18/09/2026)
+
+Pedido de la fundadora: que las estudiantes puedan reportar una
+incidencia (error técnico, duda con el contenido, problema de pago,
+otro) y que tanto coordinadora como admin la vean y respondan. Se
+evaluó la idea original ("chat de soporte") y se descartó a propósito
+a favor de un sistema de tickets asíncrono — ningún otro módulo de la
+app usa websockets/polling en tiempo real, y el caso de uso real
+(reportar → queda registrado → alguien responde cuando lo ve) no lo
+necesita.
+
+- **`models/Reporte.js`** (NUEVO) — `estudianteId` (ref `User`), `tipo`
+  (enum `["tecnico","contenido","pago","otro"]`), `tipoOtro` (String,
+  solo se usa cuando `tipo === "otro"`), `mensaje` inicial, `estado`
+  (enum `["abierto","en_revision","resuelto"]`, default `"abierto"`),
+  y `respuestas` (subdocumentos `{ autor, rolAutor, mensaje, fecha }`)
+  — el hilo de conversación. Ver DATABASE.md sección 25 para el schema
+  completo.
+- **`controllers/reporteController.js`** + **`routes/reporteRoutes.js`**
+  (`/api/reportes`, montadas en `app.js`):
+  - `POST /` (estudiante) — crea el reporte y llama a
+    `notificarNuevoReporte` sin `await` (fire-and-forget, un fallo de
+    Resend/Telegram no debe bloquear la respuesta).
+  - `GET /mios`, `GET /mios/:id` (estudiante) — sus propios reportes.
+  - `GET /`, `GET /:id` (coordinadora/admin, mismo nivel de acceso que
+    test-psicológico/cuestionario-escolar) — todos los reportes,
+    `GET /` filtrable por `?estado=`.
+  - `POST /:id/respuestas` (estudiante en lo suyo, o coordinadora/admin
+    en cualquiera — el permiso exacto se valida dentro del controller
+    porque depende de a quién pertenece el reporte, no solo del rol).
+    Si quien responde es staff y el reporte estaba `"abierto"`, pasa
+    automáticamente a `"en_revision"`. Rechaza con 409 si el reporte
+    ya está `"resuelto"`.
+  - `PATCH /:id/estado` (coordinadora/admin) — cambia el estado.
+    **Decisión cerrada:** un reporte `"resuelto"` no se puede reabrir
+    (409 si se intenta) — si la estudiante necesita algo más, crea un
+    reporte nuevo.
+  - `GET`/`PATCH /configuracion-notificaciones` (solo admin) — ver
+    punto siguiente. Registradas antes de `/:id` en el router para que
+    Express no las capture como parámetro.
+- **Notificación por tipo, no todo-o-nada (decisión cerrada):**
+  `notificarNuevoReporte` (`utils/notificaciones.js`) reutiliza
+  `DestinatarioNotificacion` igual que el resto (Resend + Telegram),
+  pero antes consulta un documento en `Configuracion` (clave
+  `reportes_notificaciones_activas`, valor `{ tecnico, contenido, pago,
+otro }`, todos `true` por defecto si nunca se configuró) para saber
+  si ese tipo específico debe avisar. Así se puede, por ejemplo,
+  desactivar el aviso inmediato de "duda con el contenido" sin tocar
+  destinatarios ni el resto de notificaciones que usan esa misma
+  colección (vouchers/balance/empresas). El toggle se administra desde
+  `admin/notificaciones-reportes` (ver ARQUITECTURA_FRONTEND.md); verlo
+  en el panel de Soporte siempre está disponible, el toggle solo
+  controla el aviso inmediato.
 
 ## Formulario empresarial (Empresas)
 
@@ -939,6 +1022,27 @@ vouchers/balance/empresas (Resend + Telegram Bot API,
 **FIX (16/09/2026): llegaba prácticamente siempre en cero.** Ver
 "Cobertura de práctica de manejo — dos bugs de zona horaria" más arriba
 para el detalle completo del bug y la corrección.
+
+**FIX #2 (17/09/2026), bug distinto — reportado tras el fix anterior:
+"pagos confirmados" y "pagos rechazados" seguían sin aparecer aunque sí
+hubo actividad real ese día.** El fix del 16/09 corrigió cómo se
+calculaba "hoy"; este es sobre **qué fecha filtra cada métrica**.
+`pagosConfirmados` y `pagosRechazados` filtraban por `createdAt` de la
+`Inscripcion` (cuándo se **creó**, casi siempre con voucher pendiente),
+no por cuándo se **confirmó o rechazó** el pago — que en la mayoría de
+los casos ocurre un día distinto (la estudiante crea la inscripción, la
+coordinadora confirma el voucher después). Con el filtro viejo, esa
+confirmación no aparecía en el resumen de ningún día: ni el de
+creación (todavía no estaba pagada) ni el de confirmación real (el
+filtro miraba `createdAt`, no la fecha de confirmación).
+
+Corregido: `pagosConfirmados` ahora filtra por `Inscripcion.fechaPago`
+(campo que `inscripcionController.js#confirmarPago` ya llenaba, solo
+que el resumen nunca lo leía); `pagosRechazados` filtra por
+`updatedAt` (no existe un campo `fechaRechazo` dedicado, pero
+`rechazarPago` hace `.save()` en el momento del rechazo, así que
+Mongoose lo mantiene al día).
+
 - **`POST /api/interno/resumen-diario`** (`routes/resumenRoutes.js` +
   `controllers/resumenController.js`) — **fuera de `protegerRuta` a
   propósito**: quien llama es un robot (GitHub Action), no una persona
@@ -1030,6 +1134,16 @@ InformacionComplementariaEscolar")` activo (no un comentario, código
 
 ## Pendiente real (backend)
 
+- **SISTEMA DE REPORTES/SOPORTE — construido (17-18/09/2026).** Ver la
+  sección propia más arriba para el detalle completo. Sigue pendiente:
+  - Ramon probó y confirmó que funciona (18/09/2026) — falta desplegar
+    a producción (Render) y confirmar que las rutas nuevas llegaron
+    (ver la lección operativa de la sesión de Cobertura de práctica más
+    arriba: comparar `app.js` real en GitHub, no asumir).
+  - Decidir con la fundadora si `notificarNuevoReporte` debe llegar
+    también por Telegram al celular de ella (mismo bloqueante de
+    Telegram que el resto del proyecto, ver más abajo) o alcanza con
+    el correo de pruebas actual.
 - **ALTA PRIORIDAD (28/08/2026): borrar y recrear `ContenidoSesion` +
   `Examen` desde cero.** Ambos se cargaron en una sesión sin documentar,
   pero con defectos serios — PDFs con codificación rota y exámenes con

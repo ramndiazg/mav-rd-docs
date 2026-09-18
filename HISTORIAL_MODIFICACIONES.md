@@ -12,6 +12,101 @@
 > viviendo en los tres documentos de arquitectura, no aquí. Nada de código
 > cambió en esta limpieza, solo documentación.
 
+## 17/09/2026 (sesión paralela) — Cierre de 4 incidencias reportadas, bug nuevo en resumen diario, rediseño del Home y Footer
+
+Sesión de trabajo en paralelo a la del sistema de reportes/soporte
+(arriba). Punto de partida: reporte de incidencias de Ramon tras la
+última ronda de pruebas.
+
+- **4 de las 6 incidencias reportadas ya tenían el fix en el código**
+  (fechado 17/09, sin documentar ni confirmado en producción todavía):
+  precio quitado de las tarjetas del Home, botón "Ver detalles del
+  plan" ya enlazando bien, banner escolar agregado, y el fix de
+  `AuthContext.tsx` para el parpadeo de login. Confirmado por Ramon que
+  el código ya estaba desplegado; quedaba pendiente solo el bug de
+  "Sesión no encontrada" (ver abajo) y probar todo en vivo — **ambos
+  confirmados funcionando en producción esta sesión.**
+- **Bug corregido: "Sesión no encontrada"** para estudiantes de
+  `estandar` (colegio y standard). Causa: `programaContenido` se
+  agregó al esquema de `Sesion` el 11/09 con default, pero los 4
+  documentos originales (de antes de esa fecha) nunca tuvieron el
+  campo escrito de verdad — un default de Mongoose no reescribe
+  documentos existentes. `scripts/corregirProgramaContenidoSesion.js`
+  (ya existía, dry-run) corrido en producción con `--confirmar`. Ver
+  ARQUITECTURA_BACKEND.md y DATABASE.md sección 4 para el detalle.
+- **Bug nuevo encontrado en `utils/resumenDiario.js` — distinto del ya
+  corregido el 16/09.** El fix del 16/09 arregló cómo se calculaba
+  "hoy"; este es sobre qué fecha filtra cada métrica: "pagos
+  confirmados"/"pagos rechazados" filtraban por `createdAt` de la
+  inscripción (cuándo se creó) en vez de `fechaPago`/`updatedAt`
+  (cuándo se confirmó o rechazó el pago) — con voucher, esas dos
+  fechas casi siempre son días distintos, así que las confirmaciones
+  reales nunca aparecían en ningún resumen. Corregido; pendiente
+  confirmar con el correo real de esta noche/mañana.
+- **Rediseño del Home + Footer,** usando como referencia un volante
+  propio que compartió la fundadora (copy y estructura real, no solo
+  estética): nueva sección "Manejo preventivo, manejo defensivo" (5
+  pilares) justo después del Hero, testimonios movidos de casi el
+  final a justo después de esa sección (prueba social antes de
+  precios), sección de "Impacto" + banner de marca, CTA final
+  corregido (tenía un párrafo vacío) y cerrado con una frase
+  manuscrita del volante en una tipografía de acento nueva (`Caveat`,
+  uso puntual). Color del banner escolar cambiado de rosa a mamey (a
+  pedido — "el rojo está muy llamativo"). Footer reescrito: Muvo RD
+  Vial y la Fundación Mujeres al Volante RD separados en dos bloques
+  propios (antes mezclados en un párrafo, con la fundación pareciendo
+  dueña de todo el sitio — riesgo real dado que solo subsidia un plan
+  específico), copyright cambiado a Muvo RD Vial, y crédito del
+  desarrollador agregado. Ver ARQUITECTURA_FRONTEND.md para el detalle
+  completo.
+- **Entrega:** archivos sueltos por descarga en cada paso (mismo
+  patrón que la sesión de soporte/reportes).
+- **Documentos de contexto actualizados** (esta misma tarea): los
+  cuatro documentos de contexto, a partir de la versión ya actualizada
+  por la sesión de reportes/soporte — sin pisar nada de esa sesión.
+
+## 17-18/09/2026 (sexta sesión) — Sistema de reportes/soporte de estudiantes
+
+Pedido de la fundadora: que las estudiantes puedan reportar una
+incidencia y que coordinadora/admin la vean y respondan. Idea
+original ("chat de soporte") evaluada y descartada a favor de un
+sistema de tickets asíncrono (ver ARQUITECTURA_BACKEND.md y
+ARQUITECTURA_FRONTEND.md para el detalle completo, DATABASE.md sección
+25 para el schema). Resumen:
+
+- **Construido:** colección `Reporte` (estudianteId, tipo, mensaje,
+  estado, hilo de `respuestas`), `POST/GET /api/reportes` y variantes,
+  toggle por tipo de reporte en `configuracion`
+  (`reportes_notificaciones_activas`) para la notificación por correo/
+  Telegram (reutiliza `DestinatarioNotificacion`, no es tabla nueva).
+  Frontend: `/soporte` (estudiante, enlazado desde el dropdown del
+  Navbar), `/panel/soporte` (coordinadora/admin, lista+detalle) con
+  badge de reportes abiertos en `/panel`, y `/admin/notificaciones-reportes`
+  (toggles, solo admin).
+- **Decisiones cerradas con Ramon:** notificación por tipo (no
+  todo-o-nada); categorías fijas + "otro" con texto libre; un reporte
+  `resuelto` no se puede reabrir (se crea uno nuevo).
+- **Bug corregido en el camino: `react-hooks/set-state-in-effect`** en
+  las 3 páginas nuevas y en las 2 cargas nuevas de `panel/page.tsx` —
+  mismo bug ya conocido de sesiones anteriores (`panel/estudiantes`,
+  `panel/grupos/*`, `/inscripcion`). Fix idéntico:
+  `queueMicrotask(...)` envolviendo la llamada, tanto para funciones
+  nombradas como para IIFEs. De paso se corrigió el mismo defecto, sin
+  que nadie lo hubiera reportado antes, en el efecto ya existente de
+  `pendientesPago` en `panel/page.tsx`.
+- **Entrega:** primero se probó pegando archivo por archivo en el
+  proyecto local; una vez confirmado que corría sin el error de lint,
+  se re-entregaron los mismos archivos corregidos como descarga
+  (Ramon prefiere archivos sueltos para descargar en vez de pegados en
+  el chat cuando ya está iterando sobre una entrega previa).
+- **Documentos de contexto actualizados** (esta misma tarea):
+  `ARQUITECTURA_BACKEND.md`, `ARQUITECTURA_FRONTEND.md` y `DATABASE.md`
+  con el detalle completo de todo lo de arriba. De paso, al revisar el
+  repo real (zip subido esta sesión) se confirmó que
+  `mav-rd-frontend` **no tiene `tailwind.config.ts`** — la nota vieja
+  de "ambas convenciones de color funcionan" en
+  ARQUITECTURA_FRONTEND.md era optimista; corregida ahí.
+
 ## 16/09/2026 (quinta sesión) — Cobertura de práctica de manejo + 3 bugs de zona horaria corregidos
 
 Construcción de punta a punta (backend + frontend) de "Cobertura de
@@ -33,8 +128,7 @@ sección 24). Resumen:
 - **Bug de despliegue (no de código):** el primer push a GitHub dejó
   `app.js` sin las dos líneas que montan las rutas nuevas — todos los
   demás archivos sí llegaron, ese cambio puntual no. Render desplegó sin
-  error (el código seguía siendo válido) pero las rutas nuevas daban
-  404. Diagnosticado comparando el `app.js` real en GitHub contra lo
+  error (el código seguía siendo válido) pero las rutas nuevas daban 404. Diagnosticado comparando el `app.js` real en GitHub contra lo
   esperado.
 - **Bug corregido en el camino: `react-hooks/set-state-in-effect` en
   `/inscripcion`.** Tres `setState` síncronos dentro de efectos
@@ -229,6 +323,11 @@ pendientes reales conocidos:
 
 ### Sin bloqueo, no depende de la fundadora
 
+- **NUEVO (18/09/2026):** desplegar a producción el sistema de
+  reportes/soporte (construido y probado en local) — confirmar que
+  `app.js` real en GitHub/Render incluye las rutas nuevas (misma
+  lección operativa de la sesión del 16/09). Decidir con la fundadora
+  si el aviso de reporte nuevo debe llegar también por Telegram.
 - Terminar Telegram para el celular de la fundadora (`chat_id` pendiente
   de agregar en el panel de Notificaciones) — canal de respaldo, el
   correo real ya funciona.
@@ -264,7 +363,10 @@ pendientes reales conocidos:
 
 - Confirmar los valores hex reales de `brand-yellow`/`brand-mamey` y
   unificar la convención de nombres de color Tailwind
-  (`brand-blue-light` vs `brand-blueLight`) en `ARQUITECTURA_FRONTEND.md`.
+  (`brand-blue-light` vs `brand-blueLight`) — **confirmado (18/09/2026)
+  que no es solo cosmético:** no hay `tailwind.config.ts` en el repo,
+  así que la variante camelCase probablemente no pinta nada. Auditar
+  qué páginas del panel/aula virtual la usan.
 - Afinar el rol `backup_readonly` en Atlas a un rol Read específico
   sobre `mav_rd` (hoy es `readAnyDatabase@admin`, de solo lectura de
   todas formas — no urgente).
